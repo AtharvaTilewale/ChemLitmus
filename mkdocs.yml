@@ -1,7 +1,9 @@
 site_name: ChemLitmus
 site_url: https://chemlitmus.readthedocs.io
 repo_url: https://github.com/AtharvaTilewale/ChemLitmus
-site_description: High-performance SMILES validation and PubChem lookup.
+repo_name: AtharvaTilewale/ChemLitmus
+site_description: SMILES validation and diagnosis, molecular identity, structural-alert auditing, and PubChem lookup.
+copyright: MIT licensed. Bundled reference data CC BY-SA 3.0 (ChEMBL).
 
 theme:
   name: material
@@ -9,19 +11,66 @@ theme:
   favicon: assets/chemlitmus-icon.png
   features:
     - navigation.tabs
+    - navigation.sections
     - navigation.top
+    - navigation.footer
     - search.suggest
     - search.highlight
+    - content.code.copy
+    - content.tabs.link
   palette:
-    # Provides a sleek dark-mode by default
-    scheme: slate
-    primary: indigo
-    accent: blue
+    - scheme: default
+      primary: indigo
+      accent: red
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: red
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets:
+      check_paths: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
 nav:
   - Home: index.md
-  - Practical Guide: practical_guide.md
-  - API Reference: api_reference.md
-  - Configuration: configuration.md
-  - Changelog: changelog.md
-  - Contributing: contributing.md
+  - Getting started:
+      - Installation: getting-started/installation.md
+      - Quickstart: getting-started/quickstart.md
+      - Configuration: getting-started/configuration.md
+  - Guides:
+      - Clean a compound library: guides/clean-a-library.md
+      - Audit a structural-alert set: guides/audit-alert-sets.md
+      - Compare two collections: guides/compare-libraries.md
+      - Search, fingerprints and 3D: guides/search-and-structures.md
+      - PubChem lookups: guides/pubchem.md
+  - Reference:
+      - CLI: reference/cli.md
+      - Python API: reference/python-api.md
+  - Concepts:
+      - Molecular identity: concepts/molecular-identity.md
+      - Molecule preparation: concepts/molecule-preparation.md
+      - SMARTS auditing: concepts/smarts-auditing.md
+      - SMILES diagnosis: concepts/smiles-diagnosis.md
+  - Project:
+      - Changelog: project/changelog.md
+      - Contributing: project/contributing.md
+      - Citing: project/citing.md
+      - Data and licensing: project/data-and-licensing.md

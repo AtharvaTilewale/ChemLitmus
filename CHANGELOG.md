@@ -49,6 +49,11 @@ Initial release.
 - **`--prep`** on `filter` and `substructure` — declare the molecule preparation used for substructure matching; recorded in every output row (`FilterResult.preparation`, `SubstructureHit.preparation`).
 - Python API: `audit_smarts`, `explain_smarts`, `load_patterns`, `load_reference_library`, `prepare_molecule`; models `SmartsAuditResult`, `PatternAudit`, `SensitivitySummary`, `SmartsExplanation`, `AtomExplanation`.
 
+### Validation
+
+- **`validate`** — offline SMILES validation with canonical form, formula, exact mass, LogP, HBD/HBA, TPSA and heavy-atom count; `--quiet` prints only the canonical SMILES; exit code 2 on an invalid single SMILES. Whitespace inside a SMILES is reported as invalid, because RDKit would otherwise silently parse only the first token.
+- **`init`** — create the cache, data and log directories and the SQLite database, and report their locations.
+
 ### Data access and infrastructure
 
 - **`lookup`** / **`batch`** — PubChem queries by SMILES, CID, name, InChI or InChIKey, with automatic routing and name-based fallback.
@@ -59,6 +64,19 @@ Initial release.
 - Typed Python API: every core function returns a Pydantic model.
 - **`status`**, **`init`** and **`update`** utility commands.
 
+### Fixed
+
+- `filter`: an invalid `--prep` or `--rules` value is now a usage error (exit 1) instead of being counted silently as a per-compound failure.
+- `standardize`: an invalid `--steps` value no longer prints a second, empty `Error:` line.
+- `tautomers`: exits 1 on an invalid single SMILES instead of 0.
+- `lookup`: an unknown `--type` is rejected before any network request.
+- `conformers`: `--num` accepted as an alias for `--num-conformers`; `--output` defaults to `conformers.sdf`.
+- `rgroup`: the core SMARTS may be given positionally as well as with `--core`.
+- `scaffold`: acyclic molecules are reported as `acyclic` instead of an empty cell.
+- `download --gen all`: no longer contacts PubChem for a title lookup; the command is fully offline as documented.
+- `diagnose`: RDKit parse messages captured during diagnosis no longer leak to stderr for subsequent parses.
+- Removed unused imports; `ruff` configuration migrated to the `[tool.ruff.lint]` table.
+
 ### Tests
 
-- 204 offline tests plus 8 networked integration tests, running on Python 3.10–3.12.
+- 215 offline tests plus 8 networked integration tests, running on Python 3.10–3.12.

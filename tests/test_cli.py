@@ -164,3 +164,78 @@ def test_similar_cli(tmp_path: Path):
     assert result.exit_code == 0
     clean_out = _clean(result.output)
     assert "Similarity Search Results" in clean_out
+
+
+# --------------------------------------------------------------------------- regression tests (review pass)
+
+def test_validate_command_single_and_quiet():
+    r = runner.invoke(app, ["validate", "CCO"])
+    assert r.exit_code == 0 and "C2H6O" in r.output
+    r = runner.invoke(app, ["validate", "CCO", "--quiet"])
+    assert r.exit_code == 0 and r.output.strip() == "CCO"
+    r = runner.invoke(app, ["validate", "C1CC(C"])
+    assert r.exit_code == 2 and "diagnose" in r.output
+    assert runner.invoke(app, ["validate"]).exit_code == 1
+
+
+def test_validate_command_batch(tmp_path):
+    f = tmp_path / "lib.smi"; f.write_text("CCO\nC1CC(C\nc1ccccc1\n")
+    out = tmp_path / "val.csv"
+    r = runner.invoke(app, ["validate", "--file", str(f), "--output", str(out)])
+    assert r.exit_code == 0 and "valid=2" in r.output and "invalid=1" in r.output
+    assert out.read_text().count("\n") == 4
+
+
+def test_tautomers_invalid_smiles_exits_nonzero():
+    assert runner.invoke(app, ["tautomers", "C1CC(C"]).exit_code == 1
+
+
+def test_standardize_bad_step_single_clean_error():
+    r = runner.invoke(app, ["standardize", "CCO", "--steps", "bogus"])
+    assert r.exit_code == 1 and "Invalid steps" in r.output
+    assert "Error: \n" not in r.output
+
+
+def test_filter_bad_prep_is_usage_error(tmp_path):
+    f = tmp_path / "lib.smi"; f.write_text("CCO\n")
+    r = runner.invoke(app, ["filter", "--file", str(f), "--rules", "lipinski", "--prep", "bogus"])
+    assert r.exit_code == 1 and "Unknown preparation" in r.output
+
+
+def test_lookup_bad_type_rejected_before_network():
+    r = runner.invoke(app, ["lookup", "CCO", "--type", "bogus"])
+    assert r.exit_code == 1 and "Unknown --type" in r.output
+
+
+def test_conformers_num_alias_and_default_output(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    r = runner.invoke(app, ["conformers", "CCO", "--num", "2"])
+    assert r.exit_code == 0 and (tmp_path / "conformers.sdf").exists()
+
+
+def test_rgroup_positional_core(tmp_path):
+    f = tmp_path / "lib.smi"; f.write_text("Cc1ccccc1\nCCc1ccccc1\n")
+    r = runner.invoke(app, ["rgroup", "c1ccccc1[*:1]", "--file", str(f)])
+    assert r.exit_code == 0 and "R-Group" in r.output
+    assert runner.invoke(app, ["rgroup", "--file", str(f)]).exit_code == 1
+
+
+def test_scaffold_acyclic_is_annotated():
+    r = runner.invoke(app, ["scaffold", "CCO"])
+    assert r.exit_code == 0 and "acyclic" in r.output
+
+
+def test_download_gen_all_is_offline(tmp_path, monkeypatch):
+    import chemlitmus.cli.main as m
+    def boom(*a, **k): raise AssertionError("network lookup attempted in --gen all")
+    monkeypatch.setattr(m, "lookup", boom)
+    r = runner.invoke(app, ["download", "CCO", "--gen", "all", "--2d", "--format", "mol", "--output-dir", str(tmp_path)])
+    assert r.exit_code == 0, r.output
+    assert any(p.suffix == ".mol" for p in tmp_path.iterdir())
+
+
+def test_diagnose_batch_does_not_leak_rdkit_log(tmp_path):
+    f = tmp_path / "lib.smi"; f.write_text("CCO\nC1CC(C\nCN(C)(C)C\n")
+    r = runner.invoke(app, ["diagnose", "--file", str(f)])
+    assert r.exit_code == 0
+    assert "SMILES Parse Error" not in r.output

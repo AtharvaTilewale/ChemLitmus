@@ -1,175 +1,82 @@
 # ChemLitmus
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/AtharvaTilewale/ChemLitmus/main/docs/assets/chemlitmus-logo.png" alt="ChemLitmus" width="620" />
+  <img src="assets/chemlitmus-logo.png" alt="ChemLitmus" width="560" />
 </p>
 
-A high-performance, production-grade tool for SMILES validation, PubChem lookup, and chemical structure retrieval.
+**ChemLitmus is a command-line tool and Python library for checking, cleaning, comparing and auditing small-molecule data.** It answers the questions that come up before any modelling or screening can be trusted:
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+- *Is this SMILES valid — and if not, where exactly is it broken?*
+- *Are these two records the same compound, or a salt, tautomer or stereoisomer of each other?*
+- *What changed between these two releases of a compound library?*
+- *Is this structural-alert catalogue actually sound, or full of dead and redundant rules?*
+- *Will my PAINS screen give the same answer tomorrow, on another machine?*
 
-## Features
+Everything runs offline on RDKit except the explicitly network-backed PubChem commands. Every result is a typed Pydantic model, every batch command writes CSV, and every command has a stable exit code so it can guard a pipeline.
 
-- **SMILES Validation & Canonicalization** - Validate and standardize SMILES strings using RDKit
-- **Multi-format Input** - Support for CSV, TSV, XLSX, SMI, SDF, and TXT files
-- **Smart Auto-detection** - Automatically identify SMILES columns
-- **PubChem Lookup** - Search by SMILES, CID, Name, InChI, and InChIKey
-- **Rich Metadata** - Retrieve IUPAC name, molecular formula, mass, descriptors
-- **Structure Downloads** - Get 2D/3D SDF, MOL, PDB, and PNG formats from PubChem
-- **Offline Molecule Generation (--gen)** - Generate 2D and 3D conformations (SDF, MOL, PDB) offline
-- **Molecular Fingerprints** - ECFP4, ECFP6, FCFP4, MACCS, RDKit, AtomPair, Torsion offline (`fingerprint` command)
-- **Similarity Search** - Tanimoto-based library search with threshold and top-N (`similar` command)
-- **Drug-Likeness Filtering** - Lipinski, Veber, Ghose, Egan, Ro3, PAINS, QED (`filter` command) from SMILES via RDKit with forcefield optimization
-- **SMARTS Pattern Auditing** - Validate structural-alert and substructure-filter sets for unparseable, dead, redundant, over-broad and preparation-sensitive patterns (`smartsaudit` command)
-- **Layered Molecular Identity** - Group a collection at exact / parent / tautomer / nostereo / skeleton / formula level and see what varies (`identity` command)
-- **Structure-Aware Library Diff** - Compare two compound collections by chemical identity, not SMILES text (`diff` command)
-- **SMILES Diagnosis** - Explain where and why a SMILES fails, with positions, suggestions and safe repairs (`diagnose` command)
-- **Batch Processing** - Process hundreds of compounds with progress tracking
-- **Async/Multithreading** - Fast parallel downloads with retry logic
-- **Caching** - SQLite database for storing results locally
-- **Multiple Exports** - Save results as CSV, Excel, or JSON
-- **Python API** - Use directly in your scripts via chemlitmus module
-- **CLI Tool** - Full-featured command-line interface with chemlitmus command
+## Where to start
 
-## Installation
+<div class="grid cards" markdown>
 
-### From PyPI 
+- **New here?**
 
-```bash
-pip install chemlitmus
-```
+    ---
 
-### Development Installation
+    Install in one line and run your first checks in five minutes.
 
-Clone the repository and install in editable mode:
+    [:octicons-arrow-right-24: Getting started](getting-started/installation.md)
 
-```bash
-git clone https://github.com/AtharvaTilewale/ChemLitmus.git
-cd ChemLitmus
-pip install -e ".[dev]"
-```
+- **Have a task in mind?**
 
-## Quick Start
+    ---
 
-### CLI Usage
+    Step-by-step guides for cleaning a library, auditing alert sets, comparing releases, and more.
 
-```bash
-# Show configuration and status
-chemlitmus status
+    [:octicons-arrow-right-24: Guides](guides/clean-a-library.md)
 
-# Initialize directories and database
-chemlitmus init
+- **Need the exact option?**
 
-# Lookup a single compound (by SMILES, CID, or Chemical Name)
-chemlitmus lookup "c1ccccc1"  # Benzene
-chemlitmus lookup "aspirin"
-chemlitmus lookup 5282253 --type cid
+    ---
 
-# Batch process a file to retrieve metadata
-chemlitmus batch compounds.csv --output results.xlsx --format xlsx
+    Every command, every flag, every output column, every Python function.
 
-# Download structure from PubChem
-chemlitmus download 5282253 --format sdf --3d
+    [:octicons-arrow-right-24: CLI reference](reference/cli.md)
 
-# Generate 3D structure offline from SMILES using RDKit (--gen all)
-chemlitmus download "CC(=O)OC1=CC=CC=C1C(=O)O" --gen all --3d --format sdf
+- **Want to know why?**
 
-# Generate 2D MOL structure locally from SMILES
-chemlitmus download "c1ccccc1" --gen all --2d --format mol
+    ---
 
-# Batch download with offline fallback for missing structures (--gen missing)
-chemlitmus download --file compounds.csv --gen missing --3d --format sdf --output-dir ./structures/
+    The ideas behind identity levels, molecule preparation and SMARTS auditing — and their limits.
 
-# Batch generate all structures offline from a SMILES file (--gen all)
-chemlitmus download --file compounds.smi --gen all --3d --format pdb --output-dir ./3d_models/
-```
+    [:octicons-arrow-right-24: Concepts](concepts/molecular-identity.md)
 
-### Python API
+</div>
 
-```python
-from chemlitmus import lookup, lookup_file, download_structure, generate_structure, validate_smiles
+## Command map
 
-# Lookup single compound
-result = lookup("c1ccccc1")
-print(result.cid, result.iupac_name)
+| I want to… | Command | Offline |
+|---|---|---|
+| Check whether a SMILES is valid | [`validate`](reference/cli.md#validate) | yes |
+| Find out *why* a SMILES is invalid, and fix it | [`diagnose`](reference/cli.md#diagnose) | yes |
+| Strip salts, neutralise, canonicalise tautomers | [`standardize`](reference/cli.md#standardize) | yes |
+| Decide whether two records are the same compound | [`identity`](reference/cli.md#identity) | yes |
+| Compare two compound collections | [`diff`](reference/cli.md#diff) | yes |
+| Audit a SMARTS / structural-alert set | [`smartsaudit`](reference/cli.md#smartsaudit) | yes |
+| Screen for drug-likeness and PAINS | [`filter`](reference/cli.md#filter) | yes |
+| Search by substructure or similarity | [`substructure`](reference/cli.md#substructure), [`similar`](reference/cli.md#similar) | yes |
+| Compute fingerprints | [`fingerprint`](reference/cli.md#fingerprint) | yes |
+| Enumerate tautomers, analyse stereo, extract scaffolds | [`tautomers`](reference/cli.md#tautomers), [`stereo`](reference/cli.md#stereo), [`scaffold`](reference/cli.md#scaffold) | yes |
+| R-group decomposition, atom mapping, SMILES augmentation | [`rgroup`](reference/cli.md#rgroup), [`atommap`](reference/cli.md#atommap), [`augment`](reference/cli.md#augment) | yes |
+| Generate 2D/3D structures and conformers | [`download --gen all`](reference/cli.md#download), [`conformers`](reference/cli.md#conformers) | yes |
+| Validate a reaction SMILES | [`reaction`](reference/cli.md#reaction) | yes |
+| Get InChI / InChIKey / formula | [`iupacname`](reference/cli.md#iupacname) | yes (name needs `--online`) |
+| Look up a compound in PubChem | [`lookup`](reference/cli.md#lookup), [`batch`](reference/cli.md#batch) | **no** |
+| Download structures from PubChem | [`download`](reference/cli.md#download) | **no** (unless `--gen all`) |
 
-# Process batch file
-results = lookup_file("compounds.csv", output_format="xlsx")
+## Design in one paragraph
 
-# Download structure from PubChem
-download_structure(5282253, format="sdf", dimension="3d")
+Most cheminformatics tooling assumes the input is clean and the filters are right. ChemLitmus is built for the step before that. Its three distinctive capabilities — located SMILES diagnosis, layered molecular identity, and static-plus-empirical auditing of SMARTS catalogues — exist because, in practice, inputs are not clean and filters are not right, and the only way to know is to measure. Read the [concepts](concepts/molecular-identity.md) section for what each one does and, just as importantly, what it cannot tell you.
 
-# Generate 2D or 3D structure offline from SMILES
-generate_structure(
-    smiles="CC(=O)OC1=CC=CC=C1C(=O)O",
-    output_path="aspirin_3d.sdf",
-    format="sdf",
-    dimension="3d",
-    title="Aspirin"
-)
-```
+## Licence and citation
 
-For more detailed API documentation, see the **[API Reference](api_reference.md)** page.
-
-## Documentation
-
-For complete tutorials and advanced usage examples, see the **[Practical Guide](practical_guide.md)**
-
-## Requirements
-
-- Python 3.10+
-- RDKit (cheminformatics library)
-- pandas (data handling)
-- requests/aiohttp (HTTP)
-- typer (CLI framework)
-- rich/tqdm (UI/progress)
-
-## Configuration
-
-For configuration and architecture details, see the **[Configuration & Architecture](configuration.md)** page.
-
-## Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch (git checkout -b feature/amazing-feature)
-3. Commit changes (git commit -m 'Add amazing feature')
-4. Push to branch (git push origin feature/amazing-feature)
-5. Open a Pull Request
-
-For more details, see the **[Contributing Guide](contributing.md)**.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Citation
-
-If you use ChemLitmus in your research, please cite:
-
-```bibtex
-@software{chemlitmus2026,
-  author={Atharva Tilewale},
-  month={10},
-  title={ChemLitmus: A High-Performance SMILES Validation and PubChem Lookup Tool},
-  version={1.0.0},
-  year={2026},
-  url={https://github.com/AtharvaTilewale/ChemLitmus}
-}
-``` 
-
-## Support
-
-- **Documentation**: [https://chemlitmus.readthedocs.io](https://chemlitmus.readthedocs.io)
-- **Issues**: [https://github.com/AtharvaTilewale/ChemLitmus/issues](https://github.com/AtharvaTilewale/ChemLitmus/issues)
-- **Discussions**: [https://github.com/AtharvaTilewale/ChemLitmus/discussions](https://github.com/AtharvaTilewale/ChemLitmus/discussions)
-
-## Changelog
-
-See [CHANGELOG.md](changelog.md) for version history.
-
----
-
-Made with ❤️ for the cheminformatics community
+ChemLitmus is MIT-licensed. The bundled reference library is derived from ChEMBL and is redistributed under CC BY-SA 3.0 — see [Data and licensing](project/data-and-licensing.md). To cite the software, see [Citing](project/citing.md).

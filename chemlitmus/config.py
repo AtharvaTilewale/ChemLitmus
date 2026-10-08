@@ -6,7 +6,6 @@ Handles environment variables, cache directories, API endpoints, and defaults.
 
 import os
 from pathlib import Path
-from typing import Optional
 
 import platformdirs
 from pydantic import ConfigDict, Field

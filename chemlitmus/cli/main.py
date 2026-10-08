@@ -9,32 +9,21 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
-from rich.align import Align
 from rich.markup import escape
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 
 from chemlitmus import (
-    __version__, lookup, lookup_file, download_structure, generate_structure, validate_smiles,
+    __version__, lookup, download_structure, generate_structure, validate_smiles,
     compute_fingerprint, apply_filters, compute_similarity,
-    FingerprintResult, FilterResult, SimilarityResult,
-    substructure_search, SubstructureHit,
-    standardize_smiles, StandardizeResult, STANDARDIZE_STEPS,
+    substructure_search, standardize_smiles, StandardizeResult, STANDARDIZE_STEPS,
     get_iupac_name, IUPACResult,
     enumerate_tautomers, TautomerResult,
-    validate_reaction, ReactionResult,
-    generate_conformers, ConformerResult,
-    extract_scaffold, ScaffoldResult,
-    analyze_stereochemistry, StereoResult,
-    rgroup_decomposition, RGroupResult,
-    augment_smiles, AugmentResult,
-    map_atoms, AtomMapResult,
-    audit_smarts, explain_smarts, load_patterns, load_reference_library,
-    SmartsAuditResult, SmartsExplanation, PREPARATIONS, AUDIT_CHECKS,
-    compute_identity, group_by_identity, IdentityReport, IDENTITY_LEVELS,
-    diff_libraries, LibraryDiff,
-    diagnose_smiles, SmilesDiagnosis,
+    validate_reaction, generate_conformers, extract_scaffold, analyze_stereochemistry, rgroup_decomposition, augment_smiles, map_atoms, audit_smarts, explain_smarts, load_patterns, load_reference_library,
+    SmartsAuditResult, SmartsExplanation, compute_identity, group_by_identity, IDENTITY_LEVELS,
+    diff_libraries, diagnose_smiles, SmilesDiagnosis,
 )
 from chemlitmus.config import settings
+from chemlitmus.logging_config import logger
 from chemlitmus.core.pubchem import PubChemCompound
 from chemlitmus.utils.parsers import parse_compounds_file
 from chemlitmus.utils.export import export_results
@@ -99,6 +88,36 @@ def main(
     pass
 
 
+# =============================================================================
+# init command
+# =============================================================================
+
+@app.command(name="init")
+def init_cmd() -> None:
+    """Create the cache, data and log directories and the local SQLite database.
+
+    Running this is optional - everything is created on first use - but it reports where
+    ChemLitmus will keep its files on this machine and confirms the database is writable.
+    """
+    from chemlitmus.core.database import DatabaseManager
+
+    created = []
+    for label, path in (("cache", settings.cache_dir), ("data", settings.data_dir), ("log", settings.log_dir)):
+        existed = Path(path).exists()
+        Path(path).mkdir(parents=True, exist_ok=True)
+        created.append((label, str(path), "exists" if existed else "created"))
+    db = DatabaseManager()
+    db.init_db()
+    db_path = Path(settings.cache_dir) / settings.db_name
+    tbl = Table(title="[bold]ChemLitmus initialised[/bold]", show_header=True, header_style="bold magenta")
+    tbl.add_column("Resource", style="cyan"); tbl.add_column("Path"); tbl.add_column("Status", justify="center")
+    for label, path, status in created:
+        tbl.add_row(f"{label} directory", path, status)
+    tbl.add_row("database", str(db_path), "ready" if db_path.exists() else "[red]missing[/red]")
+    console.print(tbl)
+    console.print("[dim]Override locations with CHEMLITMUS_CACHE_DIR / CHEMLITMUS_DATA_DIR / CHEMLITMUS_LOG_DIR.[/dim]")
+
+
 @app.command()
 def status() -> None:
     """Display system status, cache paths, and configuration."""
@@ -127,6 +146,10 @@ def lookup_cmd(
     no_cache: bool = typer.Option(False, "--no-cache", help="Bypass local cache"),
 ) -> None:
     """Look up compound information by SMILES, CID, InChIKey, or Name."""
+    _valid_types = {"auto", "smiles", "cid", "name", "inchikey"}
+    if search_type.lower() not in _valid_types:
+        console.print(f"[red]Error:[/red] Unknown --type {search_type!r}. Valid: {sorted(_valid_types)}")
+        raise typer.Exit(code=1)
     with console.status(f"[bold green]Searching for '{query}'...[/bold green]"):
         compound = lookup(query, search_type=search_type, use_cache=not no_cache)
 
@@ -228,7 +251,7 @@ def batch(
             f.write("\n".join(log_entries))
 
         export_results(results, output_file, format)
-        console.print(f"\n[green]✔[/green] Batch processing complete!")
+        console.print("\n[green]✔[/green] Batch processing complete!")
         console.print(f"  • Found: [green]{found_count}[/green]")
         console.print(f"  • Missed: [red]{len(queries) - found_count}[/red]")
         console.print(f"  • Results saved to: [cyan]{output_file}[/cyan]")
@@ -249,19 +272,26 @@ def _sanitize_name_for_filename(name: str) -> str:
     return clean
 
 
-def _resolve_smiles_for_query(query_str: str) -> tuple[Optional[str], Optional[int], Optional[str]]:
+def _resolve_smiles_for_query(query_str: str, offline: bool = False) -> tuple[Optional[str], Optional[int], Optional[str]]:
     """
     Resolve SMILES, CID, and compound title for a query string.
     Returns (smiles, cid, title).
+
+    With ``offline=True`` a valid SMILES is accepted as-is and PubChem is never contacted;
+    a name or CID still requires a lookup and returns (None, None, None) if unresolved offline.
     """
     val = validate_smiles(query_str)
     if val.is_valid and val.canonical_smiles:
+        if offline:
+            return val.canonical_smiles, None, val.canonical_smiles
         # Query itself is a valid SMILES string
         # Check if CID can also be found in cache/PubChem without failing if not found
         compound = lookup(val.canonical_smiles, use_cache=True)
         cid = compound.cid if compound else None
         title = (compound.iupac_name or val.canonical_smiles) if compound else val.canonical_smiles
         return val.canonical_smiles, cid, title
+    if offline:
+        return None, None, None
 
     # Not directly a SMILES; lookup in PubChem/cache
     compound = lookup(query_str, use_cache=True)
@@ -316,7 +346,7 @@ def download(
 
         if gen == "all":
             with console.status(f"[bold green]Generating {dimension.upper()} {fmt.upper()} for '{query_str}'...[/bold green]"):
-                smi, cid_val, title = _resolve_smiles_for_query(query_str)
+                smi, cid_val, title = _resolve_smiles_for_query(query_str, offline=True)
                 if smi:
                     stem = str(cid_val) if cid_val else _sanitize_name_for_filename(query_str)
                     out_path = output_dir / f"{stem}_{dimension}.{fmt}"
@@ -377,7 +407,7 @@ def download(
                             console.print(f"[red]✖[/red] Failed to generate structure: {gen_status}")
                             raise typer.Exit(code=1)
                     else:
-                        console.print(f"[red]✖[/red] Structure not found in PubChem/database and could not be generated locally.")
+                        console.print("[red]✖[/red] Structure not found in PubChem/database and could not be generated locally.")
                         raise typer.Exit(code=1)
 
         else:
@@ -435,13 +465,13 @@ def download(
             TaskProgressColumn(),
             console=console,
         ) as progress:
-            task = progress.add_task(f"[cyan]Processing structures...", total=len(queries))
+            task = progress.add_task("[cyan]Processing structures...", total=len(queries))
 
             for q in queries:
                 q_str = str(q).strip()
 
                 if gen == "all":
-                    smi, cid_val, title = _resolve_smiles_for_query(q_str)
+                    smi, cid_val, title = _resolve_smiles_for_query(q_str, offline=True)
                     if smi:
                         stem = str(cid_val) if cid_val else _sanitize_name_for_filename(q_str)
                         out_path = output_dir / f"{stem}_{dimension}.{fmt}"
@@ -538,7 +568,7 @@ def download(
         with open(report_file, "w", encoding="utf-8") as f:
             f.write("\n".join(log_entries))
 
-        console.print(f"\n[green]✔[/green] Batch processing complete!")
+        console.print("\n[green]✔[/green] Batch processing complete!")
         if gen in ["all", "missing"]:
             console.print(f"    Downloaded: [green]{downloaded_count}[/green]")
             console.print(f"    Generated:  [green]{generated_count}[/green]")
@@ -886,8 +916,14 @@ def filter_cmd(
                     pass_count += 1
                 else:
                     fail_count += 1
-            except Exception:
+            except ValueError as exc:
+                # a bad --prep / --rules value is a usage error, not a per-compound failure
+                progress.stop()
+                console.print(f"[red]Error:[/red] {exc}")
+                raise typer.Exit(code=1)
+            except Exception as exc:
                 error_count += 1
+                logger.warning("filter failed for %r: %s", q, exc)
             progress.advance(task)
 
     # Show summary table (first 20)
@@ -974,6 +1010,8 @@ def standardize_cmd(
                 console.print(f"[red]Invalid steps:[/red] {invalid}. Valid: {STANDARDIZE_STEPS + ['all']}")
                 raise typer.Exit(code=1)
             step_list = raw_steps
+    except typer.Exit:
+        raise
     except Exception as exc:
         console.print(f"[red]Error:[/red] {exc}")
         raise typer.Exit(code=1)
@@ -1323,6 +1361,8 @@ def tautomers_cmd(
     if smiles and file is None:
         result = enumerate_tautomers(smiles, max_tautomers=max_tautomers)
         _print_tautomer_result(result)
+        if result.error:
+            raise typer.Exit(code=1)
         return
 
     # Batch file mode
@@ -1459,10 +1499,12 @@ def reaction_cmd(
 @app.command(name="conformers")
 def conformers_cmd(
     smiles: str = typer.Argument(..., help="Input SMILES string."),
-    num: int = typer.Option(50, "--num-conformers", "-n", help="Number of conformers to generate."),
-    output: Path = typer.Option(..., "--output", "-o", help="Output .sdf file to save conformers."),
+    num: int = typer.Option(50, "--num-conformers", "--num", "-n", help="Number of conformers to generate."),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output .sdf file (default: conformers.sdf)."),
 ) -> None:
     """Generate multiple 3D conformers for a molecule (ETKDG + MMFF)."""
+    if output is None:
+        output = Path("conformers.sdf")
     if output.suffix.lower() != ".sdf":
         console.print("[red]Error:[/red] Output file must have an .sdf extension.")
         raise typer.Exit(code=1)
@@ -1498,7 +1540,10 @@ def scaffold_cmd(
         result = extract_scaffold(smiles)
         if result.success:
             console.print(f"[dim]Input:[/dim]    {smiles}")
-            console.print(f"[dim]Scaffold:[/dim] [bright_cyan]{result.scaffold_smiles}[/bright_cyan]")
+            if result.scaffold_smiles:
+                console.print(f"[dim]Scaffold:[/dim] [bright_cyan]{escape(result.scaffold_smiles)}[/bright_cyan]")
+            else:
+                console.print(f"[dim]Scaffold:[/dim] [yellow]none — {result.note or 'acyclic molecule'}[/yellow]")
         else:
             console.print(f"[red]Error:[/red] {result.error}")
         return
@@ -1519,7 +1564,13 @@ def scaffold_cmd(
     table.add_column("Murcko Scaffold", style="bright_cyan")
     
     for r in results:
-        table.add_row(r.input_smiles[:40], r.scaffold_smiles if r.success else f"[red]{r.error}[/red]")
+        if not r.success:
+            cell = f"[red]{escape(r.error or '')}[/red]"
+        elif r.scaffold_smiles:
+            cell = escape(r.scaffold_smiles)
+        else:
+            cell = f"[dim]— {escape(r.note or 'acyclic')}[/dim]"
+        table.add_row(escape(r.input_smiles[:40]), cell)
     console.print(table)
     
     if output:
@@ -1582,11 +1633,16 @@ def stereo_cmd(
 
 @app.command(name="rgroup")
 def rgroup_cmd(
-    core: str = typer.Option(..., "--core", "-c", help="SMARTS string representing the core scaffold."),
+    core_arg: Optional[str] = typer.Argument(None, help="Core SMARTS (alternative to --core)."),
+    core: Optional[str] = typer.Option(None, "--core", "-c", help="SMARTS string representing the core scaffold."),
     smiles: Optional[str] = typer.Option(None, "--smiles", "-s", help="Comma-separated SMILES strings to decompose."),
     file: Optional[Path] = typer.Option(None, "--file", "-f", help="CSV/SMI file containing SMILES."),
 ) -> None:
     """Perform R-Group Decomposition against a common core."""
+    core = core or core_arg
+    if not core:
+        console.print("[red]Error:[/red] Provide the core SMARTS positionally or with --core.")
+        raise typer.Exit(code=1)
     if not smiles and not file:
         console.print("[red]Error:[/red] Must provide either --smiles or --file.")
         raise typer.Exit(1)
@@ -1676,6 +1732,75 @@ def atommap_cmd(
         
     console.print(f"\n[dim]Input:[/dim]  {smiles}")
     console.print(f"[dim]Mapped:[/dim] [bright_cyan]{result.mapped_smiles}[/bright_cyan]\n")
+
+# =============================================================================
+# validate command
+# =============================================================================
+
+@app.command(name="validate")
+def validate_cmd(
+    smiles: str = typer.Argument(None, help="SMILES string to validate."),
+    file: Optional[Path] = typer.Option(None, "--file", "-f", help="Batch input (CSV/TSV/XLSX/SMI/SDF)."),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Save batch results to CSV."),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Print only the canonical SMILES (single mode) - useful in pipelines."),
+) -> None:
+    """Validate SMILES offline and report canonical form plus basic properties.
+
+    Exit code 0 if valid, 2 if invalid (single mode), so it works as a shell guard.
+    For an explanation of *why* a SMILES fails, use `chemlitmus diagnose`.
+    """
+    import csv
+
+    if smiles is None and file is None:
+        console.print("[red]Error:[/red] Provide a SMILES argument or --file.")
+        raise typer.Exit(code=1)
+
+    if smiles is not None and file is None:
+        r = validate_smiles(smiles)
+        if not r.is_valid:
+            if not quiet:
+                console.print(f"[red]Invalid:[/red] {r.error_message}")
+                console.print("[dim]Run `chemlitmus diagnose` on this string for a located explanation.[/dim]")
+            raise typer.Exit(code=2)
+        if quiet:
+            print(r.canonical_smiles)
+            return
+        tbl = Table(title="[bold]SMILES Validation[/bold]", show_header=True, header_style="bold magenta")
+        tbl.add_column("Property", style="cyan"); tbl.add_column("Value")
+        tbl.add_row("Input", escape(r.input_smiles))
+        tbl.add_row("Canonical SMILES", escape(r.canonical_smiles or ""))
+        tbl.add_row("Formula", r.molecular_formula or "")
+        tbl.add_row("Exact mass", f"{r.molecular_weight:.4f}" if r.molecular_weight is not None else "")
+        tbl.add_row("LogP", f"{r.logp:.2f}" if r.logp is not None else "")
+        tbl.add_row("H-bond donors / acceptors", f"{r.hbd} / {r.hba}")
+        tbl.add_row("TPSA", f"{r.tpsa:.2f}" if r.tpsa is not None else "")
+        tbl.add_row("Heavy atoms", str(r.heavy_atom_count))
+        console.print(tbl)
+        return
+
+    records = parse_compounds_file(file)
+    results = [validate_smiles(s) for s in records]
+    n_ok = sum(1 for r in results if r.is_valid)
+    tbl = Table(title=f"[bold]SMILES Validation — {len(results)} records[/bold]", show_header=True, header_style="bold magenta")
+    tbl.add_column("Input", max_width=36, overflow="fold"); tbl.add_column("Valid", justify="center")
+    tbl.add_column("Canonical", max_width=36, overflow="fold"); tbl.add_column("MW", justify="right")
+    for r in results[:20]:
+        tbl.add_row(escape(r.input_smiles), "[green]yes[/green]" if r.is_valid else "[red]no[/red]",
+                    escape(r.canonical_smiles or ""), f"{r.molecular_weight:.2f}" if r.molecular_weight is not None else "")
+    console.print(tbl)
+    if len(results) > 20:
+        console.print(f"[dim]... {len(results) - 20} more; use --output to save all.[/dim]")
+    console.print(f"\n[bold]Summary[/bold]: valid={n_ok}  invalid={len(results) - n_ok}")
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with open(output, "w", newline="", encoding="utf-8") as fh:
+            w = csv.DictWriter(fh, fieldnames=["input_smiles", "is_valid", "canonical_smiles", "molecular_formula",
+                                               "molecular_weight", "logp", "hbd", "hba", "tpsa", "heavy_atom_count", "error_message"])
+            w.writeheader()
+            for r in results:
+                w.writerow({k: ("" if v is None else v) for k, v in r.model_dump().items()})
+        console.print(f"[green]Saved:[/green] {output}")
+
 
 # =============================================================================
 # identity command
@@ -2281,7 +2406,7 @@ def update_cmd(
                             text=True,
                         )
                     if result.returncode == 0:
-                        console.print(f"[bold bright_green]Successfully pulled latest changes from GitHub![/bold bright_green]")
+                        console.print("[bold bright_green]Successfully pulled latest changes from GitHub![/bold bright_green]")
                         console.print(f"[dim]{result.stdout.strip()}[/dim]")
                     else:
                         console.print(f"[red]git pull failed with code {result.returncode}[/red]")

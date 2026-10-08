@@ -57,6 +57,14 @@ def validate_smiles(smiles_str: str) -> SMILESValidationResult:
             error_message="RDKit is not installed; skipping detailed validation",
         )
 
+    if any(ch.isspace() for ch in smiles_clean):
+        # RDKit stops at the first whitespace and treats the remainder as a title, so a string
+        # like "CC O" parses as ethane. That is a corrupted record, not a valid molecule.
+        return SMILESValidationResult(
+            input_smiles=smiles_clean,
+            is_valid=False,
+            error_message="Whitespace inside SMILES: RDKit would silently parse only the first token",
+        )
     mol = Chem.MolFromSmiles(smiles_clean)
     if mol is None:
         return SMILESValidationResult(

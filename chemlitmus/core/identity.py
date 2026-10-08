@@ -24,13 +24,12 @@ Levels, from strictest to loosest (each is a coarsening of the one above it):
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence
 
 from pydantic import BaseModel, Field
 
 try:
     from rdkit import Chem, RDLogger
-    from rdkit.Chem import rdMolDescriptors
     from rdkit.Chem.MolStandardize import rdMolStandardize
     from rdkit.Chem import RegistrationHash
     from rdkit.Chem.RegistrationHash import HashLayer
@@ -119,6 +118,9 @@ def compute_identity(smiles: str) -> IdentityKeys:
     if not _RDKIT_AVAILABLE:
         return IdentityKeys(input_smiles=smiles, is_valid=False, error="RDKit is not installed.")
     s = (smiles or "").strip()
+    if any(ch.isspace() for ch in s):
+        return IdentityKeys(input_smiles=smiles, is_valid=False,
+                            error="Whitespace inside SMILES: RDKit would silently parse only the first token.")
     mol = Chem.MolFromSmiles(s) if s else None
     if mol is None:
         return IdentityKeys(input_smiles=smiles, is_valid=False, error="Invalid SMILES: could not be parsed by RDKit.")

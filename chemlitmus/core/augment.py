@@ -2,7 +2,6 @@
 from __future__ import annotations
 from typing import Optional, List
 from pydantic import BaseModel
-import random
 
 try:
     from rdkit import Chem

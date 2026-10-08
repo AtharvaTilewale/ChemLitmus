@@ -62,7 +62,7 @@ def parse_compounds_file(file_path: Path) -> List[str]:
             smiles_list = df[smiles_col].dropna().astype(str).tolist()
 
         elif ext == ".smi":
-            with open(file_path, "r") as f:
+            with open(file_path) as f:
                 # .smi files usually have SMILES as the first space-separated token
                 smiles_list = [line.split()[0].strip() for line in f if line.strip()]
 

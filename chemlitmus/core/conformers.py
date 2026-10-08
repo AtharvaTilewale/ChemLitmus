@@ -1,6 +1,6 @@
 """Multiple conformer generation via RDKit ETKDG."""
 from __future__ import annotations
-from typing import Optional, List
+from typing import Optional
 from pydantic import BaseModel
 
 try:

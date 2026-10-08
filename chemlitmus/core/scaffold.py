@@ -13,6 +13,7 @@ except ImportError:
 class ScaffoldResult(BaseModel):
     input_smiles: str
     scaffold_smiles: Optional[str] = None
+    note: str = ""
     error: Optional[str] = None
     
     @property
@@ -31,6 +32,8 @@ def extract_scaffold(smiles: str) -> ScaffoldResult:
     try:
         core = MurckoScaffold.GetScaffoldForMol(mol)
         scaffold_smi = Chem.MolToSmiles(core)
+        if not scaffold_smi:
+            return ScaffoldResult(input_smiles=smiles, scaffold_smiles="", note="acyclic: no ring system, so no Murcko scaffold")
         return ScaffoldResult(input_smiles=smiles, scaffold_smiles=scaffold_smi)
     except Exception as e:
         return ScaffoldResult(input_smiles=smiles, error=str(e))

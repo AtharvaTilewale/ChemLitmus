@@ -1,6 +1,6 @@
 """Reaction SMILES validation and analysis."""
 from __future__ import annotations
-from typing import Optional, List
+from typing import Optional
 from pydantic import BaseModel
 
 try:

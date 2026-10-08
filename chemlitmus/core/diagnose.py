@@ -226,25 +226,42 @@ def _check_rings(toks: List[Tuple[str, str, int]]) -> List[SmilesProblem]:
     return out
 
 
+_RDKIT_LOGGER: Optional[logging.Logger] = None
+
+
+def _rdkit_logger() -> logging.Logger:
+    """Route RDKit's C++ log stream into a dedicated Python logger, once.
+
+    Switching the sink back and forth with ``LogToCppStreams`` re-enables stderr output that
+    ``DisableLog`` can no longer silence, so the sink is set once and visibility is controlled
+    entirely through this logger's level and handlers.
+    """
+    global _RDKIT_LOGGER
+    if _RDKIT_LOGGER is None:
+        rdBase.LogToPythonLogger()
+        lg = logging.getLogger("rdkit")
+        lg.propagate = False
+        lg.handlers.clear()
+        lg.setLevel(logging.CRITICAL)
+        rdBase.DisableLog("rdApp.*")
+        _RDKIT_LOGGER = lg
+    return _RDKIT_LOGGER
+
+
 def _rdkit_parse_error(s: str) -> Tuple[Optional[int], str]:
     """Parse with RDKit (no sanitization) and capture its syntax message and position."""
+    lg = _rdkit_logger()
     buf = io.StringIO()
     handler = logging.StreamHandler(buf)
-    logger = logging.getLogger("rdkit")
-    prev_level, prev_prop = logger.level, logger.propagate
-    logger.addHandler(handler)
-    logger.setLevel(logging.DEBUG)
-    logger.propagate = False
+    lg.addHandler(handler)
+    lg.setLevel(logging.DEBUG)
+    rdBase.EnableLog("rdApp.error")
     try:
-        rdBase.LogToPythonLogger()
-        rdBase.EnableLog("rdApp.error")
         Chem.MolFromSmiles(s, sanitize=False)
     finally:
         rdBase.DisableLog("rdApp.error")
-        rdBase.LogToCppStreams()
-        logger.removeHandler(handler)
-        logger.setLevel(prev_level)
-        logger.propagate = prev_prop
+        lg.removeHandler(handler)
+        lg.setLevel(logging.CRITICAL)
     text = buf.getvalue()
     m = _RD_POS_RE.search(text)
     pos = int(m.group(1)) - 1 if m else None

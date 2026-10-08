@@ -317,7 +317,7 @@ def load_patterns(path: Path | str) -> List[Tuple[str, Optional[str], Optional[s
             out.append((s.strip(), name, rs))
         return out
 
-    with open(path, "r", encoding="utf-8") as fh:
+    with open(path, encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
             if not line or line.startswith("#"):
