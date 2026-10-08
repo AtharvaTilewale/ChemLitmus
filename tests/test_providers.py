@@ -59,7 +59,41 @@ DBLINKS     CAS: 50-78-2
             KNApSAcK: C00001492
 ///
 """
-KEGG_FIND = "cpd:C01405\tAspirin; Acetylsalicylic acid; 2-Acetoxybenzenecarboxylic acid\ncpd:C13400\tBufferin; Aspirin softam\n"
+KEGG_MOL = """
+  Marvin
+
+ 13 13  0  0  0  0            999 V2000
+    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    1.2124    0.7000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    1.2124    2.1000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    2.8000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+   -1.2124    2.1000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+   -1.2124    0.7000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    2.4249    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    3.6373    0.7000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+    2.4249   -1.4000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+    2.4249    2.8000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+    3.6373    2.1000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    4.8497    2.8000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    3.6373    0.7000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+  1  2  2  0  0  0  0
+  2  3  1  0  0  0  0
+  3  4  2  0  0  0  0
+  4  5  1  0  0  0  0
+  5  6  2  0  0  0  0
+  6  1  1  0  0  0  0
+  2  7  1  0  0  0  0
+  7  8  2  0  0  0  0
+  7  9  1  0  0  0  0
+  3 10  1  0  0  0  0
+ 10 11  1  0  0  0  0
+ 11 12  1  0  0  0  0
+ 11 13  2  0  0  0  0
+M  END
+"""
+KEGG_FIND = "cpd:C13400\tBufferin; Aspirin softam\ncpd:C01405\tAspirin; Acetylsalicylic acid; 2-Acetoxybenzenecarboxylic acid\n"
+KEGG_DRUG_FIND = "dr:D00426\tRisperidone (JP19/USP/INN); Risperdal (TN)\n"
+KEGG_DRUG_FLAT = "ENTRY       D00426                      Drug\nNAME        Risperidone (JP19/USP/INN);\nFORMULA     C23H27FN4O2\nDBLINKS     CAS: 106266-06-2\n            ChEBI: 8871\n///\n"
 UNICHEM = [{"src_id": "1", "src_compound_id": "CHEMBL25"}, {"src_id": "2", "src_compound_id": "DB00945"}, {"src_id": "7", "src_compound_id": "CHEBI:15365"},
            {"src_id": "22", "src_compound_id": "2244"}, {"src_id": "84", "src_compound_id": "50-78-2"}, {"src_id": "999", "src_compound_id": "X1"}]
 
@@ -95,7 +129,15 @@ def fake_http(monkeypatch):
             return None
         if self.key == "kegg":
             if "/find/compound/" in url:
-                return KEGG_FIND if "aspirin" in url.lower() else ""
+                return KEGG_FIND if "aspirin" in url.lower() else ("cpd:C21516\tPaliperidone; 9-Hydroxyrisperidone\n" if "risperidone" in url.lower() else "")
+            if "/find/drug/" in url:
+                return KEGG_DRUG_FIND if "risperidone" in url.lower() else ""
+            if url.endswith("/get/D00426"):
+                return KEGG_DRUG_FLAT
+            if url.endswith("/get/D00426/mol"):
+                return ""
+            if url.endswith("/get/C01405/mol"):
+                return KEGG_MOL
             if "/get/C01405" in url:
                 return KEGG_FLAT
             return None
@@ -179,8 +221,12 @@ def test_kegg_record(fake_http):
     assert r.monoisotopic_mass == 180.0423 and r.molecular_weight == 180.1574
     assert r.cross_refs == {"cas": "50-78-2", "pubchem_sid": "4594", "chebi": "CHEBI:15365", "knapsack": "C00001492"}
     assert r.extra["pathways"] == ["map07048"]
-    assert KEGGProvider().lookup("Aspirin", "name").source_id == "C01405"
+    assert r.inchikey == IK and r.smiles == "CC(=O)Oc1ccccc1C(=O)O"          # from the MOL block
+    assert KEGGProvider().lookup("Aspirin", "name").source_id == "C01405"     # exact name, not the first substring hit
     assert KEGGProvider().lookup("nothing", "name") is None
+    d = KEGGProvider().lookup("risperidone", "name")                          # COMPOUND has only a derivative; DRUG has it
+    assert d.source_id == "D00426" and d.name == "Risperidone" and d.cross_refs["chebi"] == "CHEBI:8871"
+    assert KEGGProvider().looks_like_id("D00426")
 
 
 # ----------------------------------------------------------------------------- resolve()
@@ -245,6 +291,81 @@ def test_resolve_second_run_is_offline(fake_http):
     n = len(fake_http)
     res = resolve("aspirin", sources=["chembl", "chebi", "kegg"], unichem=False)
     assert len(fake_http) == n and res.agreement == "agree"
+
+
+# ----------------------------------------------------------------------------- disagreement classification
+
+def test_resolve_explains_salt_form_disagreement(fake_http, monkeypatch):
+    # ChEMBL answers with the sodium salt; ChEBI with the acid, whose synonyms include the query, so
+    # ChEBI wins the tie and ChEMBL is re-queried by structure. Make that fail so the disagreement stands.
+    rec_salt = ChEMBLProvider().lookup("CHEMBL25").model_copy(update={
+        "source_id": "CHEMBL2260549", "name": "ASPIRIN SODIUM", "synonyms": [],
+        "smiles": "CC(=O)Oc1ccccc1C(=O)[O-].[Na+]", "inchikey": "SALTSALTSALTSA-UHFFFAOYSA-M"})
+    monkeypatch.setattr(ChEMBLProvider, "by_name", lambda self, q: rec_salt)
+    monkeypatch.setattr(ChEMBLProvider, "by_inchikey", lambda self, ik: None)
+    res = resolve("aspirin", sources=["chembl", "chebi"], query_type="name", unichem=False, use_cache=False)
+    assert res.agreement == "disagree" and len(res.records) == 2          # the uncorrected text hit is kept
+    assert res.consensus_inchikey == IK
+    assert res.agreement_level == "parent" and "salt" in res.disagreement
+    assert res.pairwise[0].level == "parent"
+    c = res.corrections[0]
+    assert c.source == "chembl" and not c.corrected and "salt" in c.difference
+    assert "disagrees" in res.outcomes[0].error
+
+
+def test_resolve_records_successful_correction(fake_http, monkeypatch):
+    monkeypatch.setitem(CHEBI_SEARCH_WRONG, "results", CHEBI_SEARCH_WRONG["results"][:1])
+    monkeypatch.setattr(ChEBIProvider, "by_inchikey", lambda self, ik: ChEBIProvider().by_id("CHEBI:15365") if ik == IK else None)
+    res = resolve("aspirin", sources=["chembl", "chebi"], unichem=False, use_cache=False)
+    assert res.agreement == "agree" and res.agreement_level == "exact" and res.disagreement is None
+    c = res.corrections[0]
+    assert c.source == "chebi" and c.text_hit_id == "CHEBI:138615" and c.corrected and c.corrected_id == "CHEBI:15365"
+    assert c.difference == "different compounds"
+
+
+def test_agreement_level_none_vs_unavailable(fake_http, monkeypatch):
+    res = resolve("CHEMBL25", sources=["chembl"], unichem=False, use_cache=False)
+    assert res.agreement_level is None                                      # one structure: nothing to compare
+    other = ChEMBLProvider().lookup("CHEMBL25").model_copy(update={"smiles": "CCCCCC", "inchikey": "WRONGWRONGWRON-UHFFFAOYSA-N"})
+    monkeypatch.setattr(ChEBIProvider, "by_id", lambda self, q: other.model_copy(update={"source": "chebi", "source_id": "CHEBI:1"}))
+    monkeypatch.setattr(ChEBIProvider, "by_inchikey", lambda self, ik: None)
+    res = resolve("CHEMBL25", sources=["chembl", "chebi"], query_type="id", unichem=False, use_cache=False)
+    assert res.agreement == "disagree" and res.agreement_level == "none" and res.disagreement == "different compounds"
+
+
+def test_tie_break_prefers_source_that_knows_the_name(fake_http, monkeypatch):
+    # ChEMBL's text search ranks a derivative first; ChEBI's record is literally named 'aspirin'.
+    wrong = ChEMBLProvider().lookup("CHEMBL25").model_copy(update={"source_id": "CHEMBL999", "name": "ASPIRIN LYSINE",
+                                                                   "synonyms": [], "smiles": "CCCCCC", "inchikey": "WRONGWRONGWRON-UHFFFAOYSA-N"})
+    monkeypatch.setattr(ChEMBLProvider, "by_name", lambda self, q: wrong)
+    monkeypatch.setattr(ChEMBLProvider, "by_inchikey", lambda self, ik: ChEMBLProvider().by_id("CHEMBL25") if ik == IK else None)
+    res = resolve("aspirin", sources=["chembl", "chebi"], query_type="name", unichem=False, use_cache=False)
+    assert res.consensus_inchikey == IK and res.agreement == "agree"
+    assert res.corrections[0].source == "chembl" and res.corrections[0].corrected_id == "CHEMBL25"
+
+
+def test_concordance_report(fake_http, monkeypatch):
+    from chemlitmus.providers import concordance
+    # "CHEMBL25" is unknown to ChEBI's text search but is recovered through the consensus InChIKey
+    rep = concordance(["aspirin", "CHEMBL25", "nothing"], sources=["chembl", "chebi"], use_cache=False)
+    assert rep.n_queries == 3 and rep.n_found_any == 2 and rep.n_found_all == 2
+    assert rep.agreement_counts == {"agree": 2, "not found": 1}
+    assert rep.level_counts == {"exact": 2}
+    assert rep.found_by_source == {"chembl": 2, "chebi": 2}
+    assert rep.rows[0].ids == {"chembl": "CHEMBL25", "chebi": "CHEBI:15365"}
+    assert rep.rows[2].errors == {"chembl": "not found", "chebi": "not found"}
+
+
+def test_cli_concordance(fake_http, tmp_path):
+    f = tmp_path / "q.txt"; f.write_text("aspirin\nCHEMBL25\n")
+    out, js = tmp_path / "c.csv", tmp_path / "c.json"
+    r = runner.invoke(app, ["concordance", "--file", str(f), "-s", "chembl,chebi", "-o", str(out), "--json", str(js), "--no-cache"])
+    assert r.exit_code == 0, r.output
+    assert "Concordance across chembl, chebi" in r.output and "exact" in r.output
+    rows = out.read_text().splitlines()
+    assert rows[0].startswith("query,n_found,agreement,agreement_level") and len(rows) == 3
+    assert json.loads(js.read_text())["n_queries"] == 2
+    assert runner.invoke(app, ["concordance", "--file", str(f), "-s", "drugbank"]).exit_code == 1
 
 
 # ----------------------------------------------------------------------------- CLI

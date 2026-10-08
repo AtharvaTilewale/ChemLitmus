@@ -11,6 +11,14 @@ _BASE = "https://www.ebi.ac.uk/chebi/backend/api/public"
 _ID_RE = re.compile(r"^(CHEBI:)?\d+$", re.I)
 
 
+_TAG = re.compile(r"<[^>]+>")
+
+
+def _untag(s):
+    """ChEBI names carry presentational HTML (``<small>L</small>-thyroxine``, ``<sup>``)."""
+    return _TAG.sub("", s) if isinstance(s, str) else s
+
+
 class ChEBIProvider(Provider):
     key = "chebi"
     name = "ChEBI"
@@ -51,7 +59,7 @@ class ChEBIProvider(Provider):
         return CompoundRecord(
             source=self.key, source_id=acc, query=query,
             url=f"{self.homepage}/searchId.do?chebiId={acc}",
-            name=c.get("name") or c.get("ascii_name"), synonyms=synonyms[:25],
+            name=_untag(c.get("name") or c.get("ascii_name")), synonyms=[_untag(s) for s in synonyms[:25]],
             smiles=st.get("smiles"), inchi=st.get("standard_inchi"), inchikey=st.get("standard_inchi_key"),
             formula=chem.get("formula"),
             molecular_weight=_float(chem.get("mass")), monoisotopic_mass=_float(chem.get("monoisotopic_mass")),
@@ -73,7 +81,7 @@ class ChEBIProvider(Provider):
         if exact_name:
             # 1) a hit whose primary name is the term; 2) whose synonym list contains it
             for h in hits:
-                if (h.get("name") or "").lower() == lterm or (h.get("ascii_name") or "").lower() == lterm:
+                if _untag(h.get("name") or "").lower() == lterm or (h.get("ascii_name") or "").lower() == lterm:
                     return self.by_id(h["chebi_accession"])
             for h in sorted(hits, key=lambda x: -(x.get("stars") or 0)):
                 rec = self.by_id(h["chebi_accession"])

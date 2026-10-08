@@ -65,6 +65,14 @@ def resolve_cmd(
         agree = {"agree": "[green]sources agree on the structure[/green]", "disagree": "[red]sources DISAGREE on the structure[/red]",
                  "unknown": "[dim]agreement unknown (fewer than two InChIKeys)[/dim]"}[res.agreement]
         console.print(f"  {agree}" + (f"  ·  InChIKey {res.consensus_inchikey}" if res.consensus_inchikey else ""))
+        if res.disagreement:
+            console.print(f"  [yellow]Differ by:[/yellow] {escape(res.disagreement)}  [dim](strictest shared identity level: {res.agreement_level})[/dim]")
+            for p in res.pairwise:
+                console.print(f"    [dim]{p.source_a} vs {p.source_b}:[/dim] {escape(p.description)}")
+        for c in res.corrections:
+            fix = f"replaced by {c.corrected_id}" if c.corrected else "no structure match; dropped"
+            console.print(f"  [yellow]Corrected:[/yellow] {c.source} text search returned {escape(c.text_hit_id or '?')} "
+                          f"({escape(c.text_hit_name or '')}) — {escape(c.difference)} — {fix}")
         mg = res.merged
         t2 = Table(title="Merged record", show_header=True, header_style="bold blue")
         t2.add_column("Field", style="cyan"); t2.add_column("Value", overflow="fold")
@@ -132,6 +140,119 @@ def resolve_cmd(
         json_out.parent.mkdir(parents=True, exist_ok=True)
         json_out.write_text(json.dumps([r.model_dump() for r in results], indent=2, default=str))
         console.print(f"[green]Saved:[/green] {json_out}")
+
+@app.command(name="concordance")
+def concordance_cmd(
+    file: Path = typer.Option(..., "--file", "-f", help="Queries, one per line (or CSV/TSV with a name/id/smiles column)."),
+    sources: str = typer.Option("pubchem,chembl,chebi", "--sources", "-s", help="Comma-separated: pubchem, chembl, chebi, kegg, or all."),
+    query_type: str = typer.Option("auto", "--type", "-t", help="auto, name, smiles, inchikey, or id."),
+    timeout: float = typer.Option(40.0, "--timeout", help="Seconds allowed per query."),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Per-query table as CSV."),
+    json_out: Optional[Path] = typer.Option(None, "--json", help="Full report as JSON."),
+    show: int = typer.Option(15, "--show", help="Disagreeing queries to list in the terminal."),
+    no_cache: bool = typer.Option(False, "--no-cache", help="Bypass the local record cache."),
+) -> None:
+    """Measure how often databases return the same structure for the same name.
+
+    Resolves every query across the chosen sources and reports, per query, whether the sources
+    agree (by InChIKey), the strictest identity level they share, and what differs — salt or
+    charge form, tautomer, stereochemistry, or a different compound. The summary also counts how
+    often each database's text search landed on a different structure than the majority and
+    had to be corrected through the consensus InChIKey.
+    """
+    import csv
+    import json
+
+    from chemlitmus.providers import PROVIDERS, concordance
+
+    src_list = [s.strip().lower() for s in sources.split(",") if s.strip()]
+    bad = [s for s in src_list if s != "all" and s not in PROVIDERS]
+    if bad:
+        console.print(f"[red]Error:[/red] Unknown source(s) {bad}. Available: {sorted(PROVIDERS)} or 'all'.")
+        raise typer.Exit(code=1)
+    if query_type.lower() not in ("auto", "name", "smiles", "inchikey", "id"):
+        console.print(f"[red]Error:[/red] Unknown --type {query_type!r}. Valid: auto, name, smiles, inchikey, id.")
+        raise typer.Exit(code=1)
+    queries = parse_compounds_file(file)
+    if not queries:
+        console.print("[red]Error:[/red] No queries found in the input file.")
+        raise typer.Exit(code=1)
+
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), BarColumn(), TaskProgressColumn(), console=console) as progress:
+        task = progress.add_task("Resolving...", total=len(queries))
+        rep = concordance(queries, sources=src_list, query_type=query_type, timeout=timeout, use_cache=not no_cache,
+                          progress_callback=lambda n, total: progress.update(task, completed=n))
+
+    t1 = Table(title=f"[bold]Concordance across {', '.join(rep.sources)}[/bold]", show_header=True, header_style="bold magenta")
+    t1.add_column("Measure", style="cyan"); t1.add_column("Count", justify="right"); t1.add_column("Share", justify="right")
+    n = rep.n_queries or 1
+    t1.add_row("Queries", str(rep.n_queries), "")
+    t1.add_row("Found in at least one source", str(rep.n_found_any), f"{rep.n_found_any / n:.1%}")
+    t1.add_row("Found in every source", str(rep.n_found_all), f"{rep.n_found_all / n:.1%}")
+    for k in ("agree", "disagree", "unknown", "not found"):
+        if rep.agreement_counts.get(k):
+            t1.add_row(f"Agreement: {k}", str(rep.agreement_counts[k]), f"{rep.agreement_counts[k] / n:.1%}")
+    console.print(t1)
+
+    if rep.level_counts:
+        t2 = Table(title="Strictest identity level shared by all returned structures", show_header=True, header_style="bold blue")
+        t2.add_column("Level", style="cyan"); t2.add_column("Queries", justify="right"); t2.add_column("Meaning")
+        meaning = {"exact": "identical structures", "parent": "differ by salt, counter-ion or charge form", "tautomer": "differ by tautomer",
+                   "nostereo": "differ by stereochemistry", "skeleton": "differ by stereochemistry and tautomer",
+                   "formula": "same formula, different constitution", "different compounds": "no shared level"}
+        for lv in ("exact", "parent", "tautomer", "nostereo", "skeleton", "formula", "different compounds"):
+            if rep.level_counts.get(lv):
+                t2.add_row(lv, str(rep.level_counts[lv]), meaning[lv])
+        console.print(t2)
+
+    t3 = Table(title="Per source", show_header=True, header_style="bold blue")
+    t3.add_column("Source", style="cyan"); t3.add_column("Found", justify="right"); t3.add_column("Errors", justify="right")
+    t3.add_column("Text hit corrected by structure", justify="right"); t3.add_column("What the text hit was", overflow="fold")
+    for s in rep.sources:
+        cls = rep.correction_classes_by_source.get(s, {})
+        t3.add_row(s, str(rep.found_by_source.get(s, 0)), str(rep.errors_by_source.get(s, 0)), str(rep.corrections_by_source.get(s, 0)),
+                   escape("; ".join(f"{k} ×{v}" for k, v in sorted(cls.items(), key=lambda kv: -kv[1]))))
+    console.print(t3)
+
+    shown = [r for r in rep.rows if r.agreement == "disagree" or r.corrections][:show]
+    if shown:
+        t4 = Table(title=f"Disagreements and corrections (first {len(shown)})", show_header=True, header_style="bold yellow",
+                   caption="a → b: text search returned a, replaced by b (the record for the consensus structure); a → ∅: no such record, a kept")
+        t4.add_column("Query", style="cyan", min_width=12, overflow="fold"); t4.add_column("Level", min_width=8, overflow="fold")
+        t4.add_column("Differs by", min_width=14, overflow="fold")
+        for s in rep.sources:
+            t4.add_column(s, min_width=14, overflow="fold")
+        for r in shown:
+            cells = []
+            for s in rep.sources:
+                cid = r.ids.get(s, r.errors.get(s, ""))
+                corr = next((c for c in r.corrections if c.source == s), None)
+                if corr:
+                    cid = f"{corr.text_hit_id} → {corr.corrected_id or '∅'}"
+                cells.append(escape(str(cid)))
+            t4.add_row(escape(r.query), r.agreement_level or "—", escape(r.disagreement or ""), *cells)
+        console.print(t4)
+
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with open(output, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["query", "n_found", "agreement", "agreement_level", "disagreement", "consensus_inchikey"]
+                       + [f"{s}_id" for s in rep.sources] + [f"{s}_name" for s in rep.sources] + [f"{s}_inchikey" for s in rep.sources]
+                       + [f"{s}_text_hit" for s in rep.sources] + [f"{s}_correction" for s in rep.sources] + [f"{s}_status" for s in rep.sources])
+            for r in rep.rows:
+                corr = {c.source: c for c in r.corrections}
+                w.writerow([r.query, r.n_found, r.agreement, r.agreement_level or "", r.disagreement or "", r.consensus_inchikey or ""]
+                           + [r.ids.get(s, "") for s in rep.sources] + [r.names.get(s, "") for s in rep.sources] + [r.inchikeys.get(s, "") for s in rep.sources]
+                           + [corr[s].text_hit_id if s in corr else "" for s in rep.sources]
+                           + [corr[s].difference if s in corr else "" for s in rep.sources]
+                           + [("found" if s in r.ids else r.errors.get(s, "")) for s in rep.sources])
+        console.print(f"[green]Saved:[/green] {output}")
+    if json_out:
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        json_out.write_text(json.dumps(rep.model_dump(), indent=2, default=str))
+        console.print(f"[green]Saved:[/green] {json_out}")
+
 
 @app.command(name="lookup")
 def lookup_cmd(

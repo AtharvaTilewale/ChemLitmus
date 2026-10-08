@@ -291,7 +291,15 @@ Query several databases at once and reconcile the answers. `QUERY` is a name, SM
 | `--output`, `-o` | batch mode: CSV with one row per *(query, source)* |
 | `--json` | full result(s) — records, merged view, cross-references, agreement — as JSON |
 
-Output: a per-source table (status, id, name, time), the agreement verdict (`agree` / `disagree` / `unknown`, by InChIKey) with the consensus InChIKey, a merged record, cross-references, and source-specific extras. A source that disagrees with the majority or does not know the query is re-queried by the consensus InChIKey. Exit 1 when no source finds the compound. See [Look compounds up across databases](../guides/databases.md).
+Output: a per-source table (status, id, name, time), the agreement verdict (`agree` / `disagree` / `unknown`, by InChIKey) with the consensus InChIKey, and — when the structures differ — the strictest identity level they share and what differs (salt form, tautomer, stereochemistry, different compounds), then a merged record, cross-references, and source-specific extras. A source that disagrees with the consensus or does not know the query is re-queried by the consensus InChIKey; replacements are listed as corrections. Exit 1 when no source finds the compound. See [Look compounds up across databases](../guides/databases.md).
+
+### `concordance`
+
+```
+chemlitmus concordance --file PATH [--sources LIST] [--type T] [--timeout S] [--output PATH] [--json PATH] [--show N] [--no-cache]
+```
+
+Resolve every query in the file and tabulate cross-database agreement: counts of agree / disagree / unknown / not found, the distribution of the strictest identity level shared by all returned structures, per-source found / error / text-hit-corrected counts, and the disagreeing queries. `--output` writes one row per query; `--json` the full `ConcordanceReport`. See [Measure name-to-structure concordance](../guides/databases.md#measure-name-to-structure-concordance).
 
 ### `lookup`
 

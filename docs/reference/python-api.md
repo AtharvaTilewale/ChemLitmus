@@ -173,13 +173,19 @@ Writes a file; returns a status string (`Generated`, `Skipped (File already exis
 
 ## Databases (network)
 
-### `resolve(query, sources=None, query_type='auto', unichem=True, timeout=40.0) -> ResolveResult`
+### `resolve(query, sources=None, query_type='auto', unichem=True, timeout=40.0, use_cache=True) -> ResolveResult`
 
 Query several databases in parallel under one time budget and reconcile the answers. `sources` is a list drawn from `PROVIDERS` (`pubchem`, `chembl`, `chebi`, `kegg`) or `['all']`; default `DEFAULT_SOURCES = ['pubchem', 'chembl', 'chebi']`. `query_type` is one of `auto`, `name`, `smiles`, `inchikey`, `id`. Raises `ValueError` on an unknown source or type; network failures never raise — they appear as `error` outcomes.
 
 `ResolveResult`: `query, query_type, sources, records: list[CompoundRecord], outcomes: list[SourceOutcome], merged: CompoundRecord | None, cross_refs: dict[str, str], consensus_inchikey, agreement ('agree' | 'disagree' | 'unknown'), found`; `by_source(name)` returns that source's record or `None`.
 
+`ResolveResult` also carries `agreement_level` (strictest identity level shared by every returned structure: `exact`, `parent`, `tautomer`, `nostereo`, `skeleton`, `formula`, `none` for different compounds, or `None` when fewer than two structures are available), `disagreement` (plain-language summary), `pairwise: list[PairDifference]` and `corrections: list[Correction]` (`source, text_hit_id, text_hit_name, text_hit_inchikey, difference, corrected, corrected_id`).
+
 `SourceOutcome`: `source, status ('found' | 'not found' | 'error'), seconds, error`.
+
+### `concordance(queries, sources=None, query_type='auto', timeout=40.0, use_cache=True, progress_callback=None) -> ConcordanceReport`
+
+Resolve every query (UniChem off) and tabulate agreement. `ConcordanceReport`: `sources, n_queries, n_found_any, n_found_all, agreement_counts, level_counts, disagreement_classes, found_by_source, errors_by_source, corrections_by_source, correction_classes_by_source, rows: list[ConcordanceRow]`; `ConcordanceRow`: `query, n_found, agreement, agreement_level, disagreement, consensus_inchikey, ids, names, inchikeys, corrections, errors`.
 
 `CompoundRecord` (one schema for every database): `source, source_id, name, synonyms, smiles, inchi, inchikey, formula, molecular_weight, monoisotopic_mass, charge, xlogp, tpsa, hbd, hba, rotatable_bonds, cross_refs, url, extra`.
 

@@ -36,7 +36,7 @@ Offline on RDKit, except the explicitly network-backed database commands. Every 
 | **Audit SMARTS catalogues** — unparseable, dead, over-broad, duplicate, equivalent and subsumed patterns; sensitivity of verdicts to molecule preparation | `smartsaudit` |
 | **Screen and search** — Lipinski/Veber/Ghose/Egan/Ro3, PAINS and QED with the molecule preparation declared and recorded; substructure, similarity, fingerprints, scaffolds, R-groups | `filter` `substructure` `similar` `fingerprint` `scaffold` `rgroup` |
 | **Structures** — 2D/3D generation (ETKDG + MMFF94), conformer ensembles, reaction SMILES, atom maps, SMILES augmentation | `download --gen all` `conformers` `reaction` `atommap` `augment` |
-| **Databases** — one query across PubChem, ChEMBL, ChEBI and KEGG; InChIKey agreement check, merged record, UniChem cross-references; cached PubChem lookups and structure downloads | `resolve` `lookup` `batch` `download` |
+| **Databases** — one query across PubChem, ChEMBL, ChEBI and KEGG; agreement check with the *kind* of disagreement (salt form, tautomer, stereo), merged record, UniChem cross-references; name→structure concordance statistics for a whole list | `resolve` `concordance` `lookup` `batch` `download` |
 
 ## Why these features
 

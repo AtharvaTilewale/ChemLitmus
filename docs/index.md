@@ -71,6 +71,7 @@ Everything runs offline on RDKit except the explicitly network-backed database c
 | Validate a reaction SMILES | [`reaction`](reference/cli.md#reaction) | yes |
 | Get InChI / InChIKey / formula | [`iupacname`](reference/cli.md#iupacname) | yes (name needs `--online`) |
 | Look up a compound across PubChem, ChEMBL, ChEBI, KEGG | [`resolve`](reference/cli.md#resolve) | **no** |
+| Measure name→structure agreement between databases | [`concordance`](reference/cli.md#concordance) | **no** |
 | Look up a compound in PubChem (cached) | [`lookup`](reference/cli.md#lookup), [`batch`](reference/cli.md#batch) | **no** |
 | Download structures from PubChem | [`download`](reference/cli.md#download) | **no** (unless `--gen all`) |
 

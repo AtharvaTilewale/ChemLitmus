@@ -61,6 +61,25 @@ class SourceOutcome(BaseModel):
     seconds: float = 0.0
 
 
+class Correction(BaseModel):
+    """A source whose text match disagreed with the other sources and was re-resolved by structure."""
+
+    source: str
+    text_hit_id: Optional[str] = None
+    text_hit_name: Optional[str] = None
+    text_hit_inchikey: Optional[str] = None
+    difference: str = Field("", description="How the text hit differs from the consensus structure (identity-level language).")
+    corrected: bool = Field(False, description="Whether a structure lookup by the consensus InChIKey found a record.")
+    corrected_id: Optional[str] = None
+
+
+class PairDifference(BaseModel):
+    source_a: str
+    source_b: str
+    level: Optional[str] = Field(None, description="Strictest identity level the two structures share; None = different compounds.")
+    description: str
+
+
 class ResolveResult(BaseModel):
     """Everything learned about one query across the requested sources."""
 
@@ -73,6 +92,10 @@ class ResolveResult(BaseModel):
     cross_refs: Dict[str, str] = Field(default_factory=dict, description="Identifiers across databases (from the records plus UniChem).")
     consensus_inchikey: Optional[str] = None
     agreement: str = Field("unknown", description="'agree' when every record shares the consensus InChIKey, 'disagree' otherwise, 'unknown' when fewer than two records carry one.")
+    agreement_level: Optional[str] = Field(None, description="Strictest identity level (exact, parent, tautomer, nostereo, skeleton, formula) shared by every returned structure; 'none' when they are different compounds; None when fewer than two records carry a usable structure.")
+    disagreement: Optional[str] = Field(None, description="Plain-language account of what differs between the returned structures when agreement != 'agree'.")
+    pairwise: List[PairDifference] = Field(default_factory=list, description="Pairwise identity comparison of the returned structures (only when they differ).")
+    corrections: List[Correction] = Field(default_factory=list, description="Sources whose text hit was replaced by a structure-based lookup.")
 
     @property
     def found(self) -> bool:
@@ -80,6 +103,91 @@ class ResolveResult(BaseModel):
 
     def by_source(self, key: str) -> Optional[CompoundRecord]:
         return next((r for r in self.records if r.source == key), None)
+
+
+def _consensus(records: List[CompoundRecord], query: str):
+    """InChIKey to treat as the answer, and how many records carry it.
+
+    Majority wins. When there is no strict majority (typically two sources that disagree), prefer
+    the record whose preferred name or synonyms contain the query verbatim — the database that
+    *knows the name* is more likely to be right than one whose text search ranked a derivative
+    first. If both do, prefer the parent form (fewest fragments, neutral) over a salt or hydrate;
+    remaining ties fall back to source order.
+    """
+    iks = [r.inchikey for r in records if r.inchikey]
+    counts = Counter(iks)
+    top, n = counts.most_common(1)[0]
+    tied = [k for k, c in counts.items() if c == n]
+    if len(tied) == 1:
+        return top, n
+    q = query.strip().lower()
+    cands = [r for r in records if r.inchikey in tied]
+    named = [r for r in cands if q == (r.name or "").lower() or q in {s.lower() for s in r.synonyms}]
+    if len({r.inchikey for r in named}) == 1:
+        return named[0].inchikey, n
+    # Still tied (e.g. both records are literally called by the query): prefer the parent form --
+    # fewer fragments and no net charge -- over a salt, hydrate or ion.
+    pool = named or cands
+
+    def _rank(r: CompoundRecord):
+        k = _identity_of(r)
+        return (k.n_fragments if k else 9, k.had_charge if k else True)
+
+    return min(pool, key=_rank).inchikey, n
+
+
+def _identity_of(rec: CompoundRecord):
+    if not rec.smiles:
+        return None
+    from chemlitmus.core.identity import compute_identity
+    k = compute_identity(rec.smiles)
+    return k if k.is_valid else None
+
+
+def _describe(a: CompoundRecord, b: Optional[CompoundRecord]) -> str:
+    if b is None:
+        return "no consensus structure"
+    ka, kb = _identity_of(a), _identity_of(b)
+    if ka is None or kb is None:
+        return "structure unavailable"
+    from chemlitmus.core.identity import describe_difference
+    return describe_difference(ka, kb)
+
+
+def _classify(records: List[CompoundRecord], agreement: str):
+    """Strictest identity level shared by every structure, pairwise differences, and a summary."""
+    from chemlitmus.core.identity import IDENTITY_LEVELS, describe_difference, strictest_shared_level
+    keyed = [(r.source, _identity_of(r)) for r in records]
+    keyed = [(s, k) for s, k in keyed if k is not None]
+    if len(keyed) < 2:
+        return None, [], None
+    level = None
+    for lv in IDENTITY_LEVELS:
+        vals = {k.key(lv) for _, k in keyed}
+        if None not in vals and len(vals) == 1:
+            level = lv
+            break
+    if level is None:
+        level = "none"
+    pairwise: List[PairDifference] = []
+    if level != "exact":
+        for i in range(len(keyed)):
+            for j in range(i + 1, len(keyed)):
+                (sa, ka), (sb, kb) = keyed[i], keyed[j]
+                if ka.exact == kb.exact:
+                    continue
+                pairwise.append(PairDifference(source_a=sa, source_b=sb, level=strictest_shared_level(ka, kb),
+                                               description=describe_difference(ka, kb)))
+    if agreement == "agree" and level == "exact":
+        return level, pairwise, None
+    if level == "none":
+        summary = "different compounds"
+    elif level == "exact":
+        summary = None
+    else:
+        descs = sorted({p.description for p in pairwise})
+        summary = "; ".join(descs) if descs else None
+    return level, pairwise, summary
 
 
 _MERGE_FIELDS = ("name", "smiles", "inchi", "inchikey", "formula", "molecular_weight", "monoisotopic_mass",
@@ -132,6 +240,7 @@ def resolve(
 
     outcomes: List[SourceOutcome] = []
     records: List[CompoundRecord] = []
+    corrections: List[Correction] = []
 
     deadline = time.time() + timeout
 
@@ -167,11 +276,13 @@ def resolve(
     # the others through the structure. Retry every missing source by the consensus InChIKey.
     iks0 = [r.inchikey for r in records if r.inchikey]
     if iks0 and query_type.lower() in ("auto", "name") and not _looks_like_inchikey(query):
-        consensus0, n0 = Counter(iks0).most_common(1)[0]
+        consensus0, n0 = _consensus(records, query)
         missing = [o.source for o in outcomes if o.status == "not found"]
         # A source that answered with a *different* structure than the majority most likely
         # matched a synonym or a derivative by text search; re-resolve it by structure.
         outliers = [r.source for r in records if r.inchikey and r.inchikey != consensus0] if n0 >= 2 or len(iks0) == 2 else []
+        text_hits = {r.source: r for r in records if r.source in outliers}
+        consensus_rec = next((r for r in records if r.inchikey == consensus0), None)
         if outliers:
             records = [r for r in records if r.source not in outliers]
             missing = missing + outliers
@@ -189,26 +300,40 @@ def resolve(
                 done, _ = cf.wait(futs, timeout=max(5.0, timeout / 2))
                 for fut in done:
                     k, rec, err, secs = fut.result()
+                    diff = _describe(text_hits[k], consensus_rec) if k in text_hits else None
                     for o in outcomes:
                         if o.source == k:
                             o.seconds = round(o.seconds + secs, 2)
                             if rec is not None:
                                 o.status = "found"; o.error = None
                             elif k in outliers:
-                                o.status = "not found"; o.error = "text match disagreed with other sources and no structure match was found"
+                                # keep the text hit, but say that it does not match the others
+                                o.status = "found"
+                                o.error = f"text match disagrees with the other sources ({diff}); no record for the consensus structure"
                     if rec is not None:
                         records.append(rec)
+                    elif k in text_hits:
+                        records.append(text_hits[k])
+                    if k in text_hits:
+                        th = text_hits[k]
+                        corrections.append(Correction(
+                            source=k, text_hit_id=th.source_id, text_hit_name=th.name, text_hit_inchikey=th.inchikey,
+                            difference=diff or "", corrected=rec is not None,
+                            corrected_id=rec.source_id if rec is not None else None,
+                        ))
             records.sort(key=lambda r: order.get(r.source, 99))
 
-    res = ResolveResult(query=query, query_type=query_type, sources_requested=keys, outcomes=outcomes, records=records)
+    res = ResolveResult(query=query, query_type=query_type, sources_requested=keys, outcomes=outcomes, records=records,
+                        corrections=corrections)
     if not records:
         return res
 
     iks = [r.inchikey for r in records if r.inchikey]
     if iks:
-        consensus, n = Counter(iks).most_common(1)[0]
+        consensus, n = _consensus(records, query)
         res.consensus_inchikey = consensus
         res.agreement = "unknown" if len(iks) < 2 else ("agree" if n == len(iks) else "disagree")
+    res.agreement_level, res.pairwise, res.disagreement = _classify(records, res.agreement)
 
     xrefs: Dict[str, str] = {}
     for r in records:
@@ -229,6 +354,9 @@ def resolve(
 
 __all__ = [
     "PROVIDERS", "DEFAULT_SOURCES", "QUERY_TYPES",
-    "CompoundRecord", "Provider", "ProviderError", "SourceOutcome", "ResolveResult",
-    "get_provider", "resolve", "unichem_xrefs",
+    "CompoundRecord", "Provider", "ProviderError", "SourceOutcome", "ResolveResult", "Correction", "PairDifference",
+    "ConcordanceRow", "ConcordanceReport",
+    "get_provider", "resolve", "concordance", "unichem_xrefs",
 ]
+
+from chemlitmus.providers.concordance import ConcordanceReport, ConcordanceRow, concordance  # noqa: E402

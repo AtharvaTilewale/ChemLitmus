@@ -61,6 +61,33 @@ to a derivative (ChEBI's top hit for "aspirin", for example, is *aspirin-trigger
 is corrected to the entry with the right structure, and a database that lacks the synonym is
 still found through the structure.
 
+### What "disagree" means
+
+When the InChIKeys differ, ChemLitmus explains *how* the structures differ using the same
+nested identity levels as [`identity`](../concepts/molecular-identity.md):
+
+| Shared level | Meaning |
+|---|---|
+| `parent` | same parent compound; the sources differ by salt, counter-ion, hydrate or charge form |
+| `tautomer` | same parent after tautomer canonicalisation |
+| `nostereo` | same constitution; the sources differ in stereochemistry (one may be racemic, the other a single enantiomer) |
+| `skeleton` | differ in both stereochemistry and tautomer |
+| `formula` | same formula, different constitution |
+| `none` | different compounds |
+
+```
+  sources DISAGREE on the structure  ·  InChIKey CZRQXSDBMCMPNJ-…
+  Differ by: salt, counter-ion or charge form  (strictest shared identity level: parent)
+    chembl vs chebi: salt, counter-ion or charge form
+```
+
+Which structure counts as the consensus: the majority InChIKey; on a tie, the record whose
+name or synonyms contain the query verbatim; if both do, the parent form (fewest fragments,
+neutral) over a salt or hydrate; finally source order. A source whose text hit does not match
+the consensus is re-queried by the consensus InChIKey and the replacement is reported as a
+**correction** (`text hit → replacement`). If the database has no record for the consensus
+structure, the text hit is kept and marked as disagreeing — nothing is silently dropped.
+
 ### Timeouts and busy servers
 
 Everything for one query runs in parallel under a single budget (`--timeout`, default 40 s).
@@ -82,6 +109,52 @@ The input is one query per line (or a CSV/TSV with a `name`, `id`, `smiles` or `
 `--output` writes one row per *(query, source)* with id, name, SMILES, InChIKey, formula,
 molecular weight, URL, and the per-query agreement verdict. `--json` keeps everything,
 including cross-references and source extras.
+
+## Measure name-to-structure concordance
+
+Different databases apply different naming conventions, so the *same name* can resolve to
+*different structures* — a salt in one, the free acid in another, a racemate here and a single
+enantiomer there. `concordance` quantifies this for a list of names:
+
+```bash
+chemlitmus concordance --file drugs.txt -s chembl,chebi,kegg -o concordance.csv --json concordance.json
+```
+
+The report gives, per query, the agreement verdict, the strictest identity level shared by all
+returned structures, what differed, and every source's identifier — and in summary, how many
+queries agree, the distribution of shared levels, and **per source, how often its text search
+landed on a different structure than the consensus** (and what kind of difference it was).
+
+Three patterns account for most disagreements, each visible in the per-query rows:
+
+* **Salt, hydrate or charge form** (`parent`): ChEMBL's *lisinopril* (CHEMBL419213) is the
+  dihydrate, ChEBI's text hit (CHEBI:43755) the anhydrous acid.
+* **Stereochemistry** (`nostereo`): KEGG COMPOUND has *salbutamol* only as the (R)-enantiomer
+  (C11770, levalbuterol); ChEMBL and ChEBI return the racemate.
+* **A different compound from a substring search** (`none`): KEGG's `find` returns
+  *9-hydroxyrisperidone* for "risperidone" and *noradrenaline* for "adrenaline". ChemLitmus
+  accepts a KEGG text hit only when a listed name equals the query, falls back to KEGG DRUG,
+  and otherwise recovers the entry through the consensus InChIKey.
+
+Public services have bad days — during development ChEMBL returned HTTP 500 and PubChem
+HTTP 503 for hours at a stretch — so the report counts errors per source and a failed source is
+never silently treated as "not found". Re-run with the cache warm (the default) and only the
+failed sources are fetched again.
+
+The output CSV has one row per query with `agreement`, `agreement_level`, `disagreement`,
+`consensus_inchikey`, and per source `<source>_id`, `<source>_name`, `<source>_inchikey`,
+`<source>_text_hit`, `<source>_correction`, `<source>_status`.
+
+From Python:
+
+```python
+from chemlitmus import concordance
+rep = concordance(["metformin", "diclofenac", "warfarin"], sources=["chembl", "chebi"])
+rep.agreement_counts            # {'agree': 3}
+rep.level_counts                # {'exact': 3}
+rep.corrections_by_source       # {'chembl': 0, 'chebi': 0}
+rep.rows[0].ids                 # {'chembl': 'CHEMBL1431', 'chebi': 'CHEBI:6801'}
+```
 
 ## PubChem only: `lookup` and `download`
 
