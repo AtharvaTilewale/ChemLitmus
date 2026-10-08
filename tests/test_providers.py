@@ -226,6 +226,27 @@ def test_resolve_json_roundtrip(fake_http):
     assert ResolveResult.model_validate(data).records[0].source_id == "CHEMBL25"
 
 
+def test_provider_cache_hits_by_query_id_and_inchikey(fake_http):
+    p = ChEMBLProvider()
+    assert p.lookup("aspirin", "name").source_id == "CHEMBL25"
+    n_calls = len(fake_http)
+    assert p.lookup("aspirin", "name").source_id == "CHEMBL25"          # same query: cached
+    assert p.lookup("CHEMBL25").source_id == "CHEMBL25"                 # by id: cached via record
+    assert p.lookup(IK).source_id == "CHEMBL25"                         # by inchikey: cached via record
+    assert len(fake_http) == n_calls
+    assert p.lookup("aspirin", "name", use_cache=False).source_id == "CHEMBL25"
+    assert len(fake_http) == n_calls + 1
+    from chemlitmus.core.database import DatabaseManager
+    assert DatabaseManager().provider_cache_stats() == {"chembl": 3}
+
+
+def test_resolve_second_run_is_offline(fake_http):
+    resolve("aspirin", sources=["chembl", "chebi", "kegg"], unichem=False)
+    n = len(fake_http)
+    res = resolve("aspirin", sources=["chembl", "chebi", "kegg"], unichem=False)
+    assert len(fake_http) == n and res.agreement == "agree"
+
+
 # ----------------------------------------------------------------------------- CLI
 
 def test_cli_resolve_single(fake_http, tmp_path):

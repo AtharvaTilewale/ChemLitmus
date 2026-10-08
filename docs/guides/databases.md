@@ -68,6 +68,10 @@ A server that is down or busy fails fast and is reported as an **error** row; th
 still return. PubChem's rate limit (five requests per second) and the ChEMBL/ChEBI/KEGG service
 etiquette are enforced per database.
 
+### Caching
+
+Every record a provider returns is stored in the local SQLite cache under the query, the native identifier and the InChIKey, so a compound resolved once by name is later available offline by any of them, and a second `resolve --file` run over the same list makes no network requests. `--no-cache` bypasses the cache; `chemlitmus status` reports how many records are held per source.
+
 ## Batches
 
 ```bash

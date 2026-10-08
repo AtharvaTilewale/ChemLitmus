@@ -161,14 +161,53 @@ class Provider(ABC):
     def looks_like_id(self, query: str) -> bool:
         """Whether ``query`` has the shape of this provider's native identifier."""
 
-    def lookup(self, query: str, query_type: str = "auto", deadline: Optional[float] = None) -> Optional[CompoundRecord]:
-        """Dispatch by query type. ``deadline`` is an absolute ``time.time()`` after which no
-        further HTTP requests are started and in-flight ones are capped."""
+    def lookup(
+        self,
+        query: str,
+        query_type: str = "auto",
+        deadline: Optional[float] = None,
+        use_cache: bool = True,
+    ) -> Optional[CompoundRecord]:
+        """Dispatch by query type, consulting the local SQLite cache first.
+
+        ``deadline`` is an absolute ``time.time()`` after which no further HTTP requests are
+        started and in-flight ones are capped. A found record is cached under the query, its
+        native identifier and its InChIKey, so later lookups by any of them are offline.
+        """
+        qt = query_type.lower()
+        if qt not in QUERY_TYPES:
+            raise ValueError(f"Unknown query type {query_type!r}. Valid: {QUERY_TYPES}")
+        key = self._cache_key(query, qt)
+        if use_cache:
+            cached = _cache_get(self.key, key)
+            if cached is not None:
+                return cached
         self._local.deadline = deadline
         try:
-            return self._lookup(query, query_type)
+            rec = self._lookup(query, query_type)
         finally:
             self._local.deadline = None
+        if rec is not None and use_cache:
+            _cache_put(self.key, rec, extra_keys=[key])
+        return rec
+
+    def _cache_key(self, query: str, query_type: str) -> str:
+        """Normalised cache key: ``id:``/``inchikey:``/``smiles:``/``text:`` prefix plus value."""
+        q = query.strip()
+        if query_type == "auto":
+            if _looks_like_inchikey(q):
+                query_type = "inchikey"
+            elif self.looks_like_id(q):
+                query_type = "id"
+            elif _is_valid_smiles(q):
+                query_type = "smiles"
+            else:
+                query_type = "text"
+        elif query_type == "name":
+            query_type = "text"
+        if query_type == "smiles":
+            return f"smiles:{_canonical_smiles(q) or q}"
+        return f"{query_type}:{q.lower()}"
 
     def _lookup(self, query: str, query_type: str) -> Optional[CompoundRecord]:
         q = query.strip()
@@ -185,6 +224,53 @@ class Provider(ABC):
 
 
 # ---- shared helpers ----------------------------------------------------------------------
+
+_DB = None
+
+
+def _db():
+    """Lazily opened shared cache handle (same SQLite file as the PubChem cache)."""
+    global _DB
+    if _DB is None:
+        from chemlitmus.core.database import DatabaseManager
+        _DB = DatabaseManager()
+        _DB.init_db()
+    return _DB
+
+
+def _cache_get(source: str, key: str) -> Optional[CompoundRecord]:
+    from chemlitmus.config import settings
+    if not settings.enable_cache:
+        return None
+    data = _db().get_provider_record(source, key)
+    if data is None:
+        return None
+    try:
+        return CompoundRecord.model_validate(data)
+    except Exception:  # corrupt or outdated payload: treat as a miss
+        return None
+
+
+def _cache_put(source: str, rec: CompoundRecord, extra_keys: Optional[List[str]] = None) -> None:
+    from chemlitmus.config import settings
+    if not settings.enable_cache:
+        return
+    keys = set(extra_keys or [])
+    if rec.source_id:
+        keys.add(f"id:{rec.source_id.lower()}")
+    if rec.inchikey:
+        keys.add(f"inchikey:{rec.inchikey.lower()}")
+    _db().cache_provider_record(source, sorted(keys), rec.model_dump(mode="json"))
+
+
+def _canonical_smiles(s: str) -> Optional[str]:
+    try:
+        from rdkit import Chem
+        m = Chem.MolFromSmiles(s)
+        return Chem.MolToSmiles(m) if m is not None else None
+    except ImportError:  # pragma: no cover
+        return None
+
 
 def _looks_like_inchikey(s: str) -> bool:
     return len(s) == 27 and s[14] == "-" and s[25] == "-" and s.replace("-", "").isalnum() and s.isupper()

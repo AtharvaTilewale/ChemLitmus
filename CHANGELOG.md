@@ -57,6 +57,7 @@ Initial release.
 ### Data access and infrastructure
 
 - **`resolve`** — one query across **PubChem, ChEMBL, ChEBI and KEGG** (opt-in) in parallel under a single time budget; every database answers in one `CompoundRecord` schema. Reports whether the sources **agree on the structure** (InChIKey majority), merges the records field-wise, and collects cross-database identifiers (CAS, DrugBank, HMDB, PDBe, SureChEMBL, …) through **UniChem** and the databases' own links. A source that disagrees with the majority, or does not know the name, is re-queried by the consensus InChIKey, so a free-text search that lands on a derivative is corrected by structure.
+- Local SQLite cache for every database provider: a record found once is reusable offline by query, native identifier or InChIKey (`resolve --no-cache` bypasses it).
 - Provider layer `chemlitmus.providers` — `resolve()`, `get_provider()`, `unichem_xrefs()`, `PubChemProvider`, `ChEMBLProvider`, `ChEBIProvider`, `KEGGProvider`; per-database rate limiting and deadline-aware retries so a busy server cannot exceed the fan-out budget.
 - **`lookup`** / **`batch`** — PubChem queries by SMILES, CID, name, InChI or InChIKey, with automatic routing and name-based fallback.
 - Multi-format input parsing for CSV, TSV, XLSX, SMI, SDF and TXT with SMILES column auto-detection.
@@ -81,5 +82,8 @@ Initial release.
 - Removed unused imports; `ruff` configuration migrated to the `[tool.ruff.lint]` table.
 
 ### Tests
+
+- Offline, HTTP-mocked tests for the PubChem client, result export, UniChem and the provider cache; every test runs against an isolated temporary cache.
+- CI runs lint, tests on Python 3.10–3.13 (Linux, macOS, Windows), documentation build and package build; live-database tests run on push and are non-blocking.
 
 - 215 offline tests plus 8 networked integration tests, running on Python 3.10–3.12.

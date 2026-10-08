@@ -4,7 +4,7 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional
 
 from chemlitmus.config import settings
 from chemlitmus.core.pubchem import PubChemCompound
@@ -48,6 +48,20 @@ class DatabaseManager:
             )
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_cid ON compound_cache(cid)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_smiles ON compound_cache(canonical_smiles)")
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS provider_cache (
+                    source TEXT NOT NULL,
+                    query_key TEXT NOT NULL,
+                    source_id TEXT,
+                    inchikey TEXT,
+                    record_json TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (source, query_key)
+                )
+                """
+            )
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_provider_inchikey ON provider_cache(source, inchikey)")
             conn.commit()
             logger.info(f"Initialized database schema at {self.db_path}")
 
@@ -108,3 +122,50 @@ class DatabaseManager:
                 conn.commit()
         except Exception as e:
             logger.error(f"Failed to write to cache for '{query_key}': {e}")
+
+    # ---- multi-database provider records -------------------------------------------------
+
+    def get_provider_record(self, source: str, query_key: str) -> Optional[dict]:
+        """Return the cached ``CompoundRecord`` payload for ``(source, query_key)`` or ``None``."""
+        if not settings.enable_cache:
+            return None
+        try:
+            with self.get_connection() as conn:
+                row = conn.execute(
+                    "SELECT record_json FROM provider_cache WHERE source = ? AND query_key = ?",
+                    (source, query_key),
+                ).fetchone()
+                if row and row["record_json"]:
+                    return json.loads(row["record_json"])
+        except Exception as e:
+            logger.error(f"Provider cache lookup failed for {source}:'{query_key}': {e}")
+        return None
+
+    def cache_provider_record(self, source: str, query_keys: List[str], record: dict) -> None:
+        """Store one provider record under every key in ``query_keys``."""
+        if not settings.enable_cache or not record or not query_keys:
+            return
+        try:
+            payload = json.dumps(record, default=str)
+            now = datetime.now(timezone.utc).isoformat()
+            with self.get_connection() as conn:
+                conn.executemany(
+                    """
+                    INSERT OR REPLACE INTO provider_cache
+                        (source, query_key, source_id, inchikey, record_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    [(source, k, record.get("source_id"), record.get("inchikey"), payload, now) for k in query_keys],
+                )
+                conn.commit()
+        except Exception as e:
+            logger.error(f"Failed to write provider cache for {source}: {e}")
+
+    def provider_cache_stats(self) -> Dict[str, int]:
+        """Number of cached provider records per source."""
+        try:
+            with self.get_connection() as conn:
+                rows = conn.execute("SELECT source, COUNT(*) AS n FROM provider_cache GROUP BY source").fetchall()
+                return {r["source"]: r["n"] for r in rows}
+        except Exception:
+            return {}

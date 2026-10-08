@@ -51,12 +51,17 @@ dev = [
     "mypy>=1.5.0",
     "ruff>=0.1.0",
 ]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "pymdown-extensions>=10",
+]
 
 [project.scripts]
 chemlitmus = "chemlitmus.cli:app"
 
 [tool.setuptools]
-packages = ["chemlitmus", "chemlitmus.core", "chemlitmus.cli", "chemlitmus.utils", "chemlitmus.data", "chemlitmus.providers"]
+packages = ["chemlitmus", "chemlitmus.core", "chemlitmus.cli", "chemlitmus.cli.commands", "chemlitmus.utils", "chemlitmus.data", "chemlitmus.providers"]
 
 [tool.setuptools.package-data]
 "chemlitmus.data" = ["*.smi.gz", "README.md"]

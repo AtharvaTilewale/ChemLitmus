@@ -38,3 +38,16 @@ def mock_smiles_list() -> list[str]:
         "CC(=O)O",  # Acetic acid
         "c1ccc(O)cc1",  # Phenol
     ]
+
+
+@pytest.fixture(autouse=True)
+def _isolated_cache(tmp_path, monkeypatch):
+    """Every test gets its own SQLite cache so the suite never touches the user's cache."""
+    from chemlitmus.config import settings
+    import chemlitmus.providers.base as pb
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    monkeypatch.setattr(settings, "cache_dir", cache)
+    monkeypatch.setattr(pb, "_DB", None)
+    yield
+    monkeypatch.setattr(pb, "_DB", None)

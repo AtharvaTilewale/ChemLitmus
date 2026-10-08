@@ -111,6 +111,7 @@ def resolve(
     query_type: str = "auto",
     unichem: bool = True,
     timeout: float = 40.0,
+    use_cache: bool = True,
 ) -> ResolveResult:
     """Look a query up in several databases at once and reconcile the answers.
 
@@ -120,6 +121,7 @@ def resolve(
         query_type: One of :data:`QUERY_TYPES`; ``auto`` infers from the query's shape.
         unichem: Also fetch cross-database identifiers from UniChem via the consensus InChIKey.
         timeout: Overall wall-clock budget for the parallel fan-out, in seconds.
+        use_cache: Read and write the local SQLite record cache (``settings.enable_cache`` must also be on).
     """
     if query_type.lower() not in QUERY_TYPES:
         raise ValueError(f"Unknown query type {query_type!r}. Valid: {QUERY_TYPES}")
@@ -136,7 +138,7 @@ def resolve(
     def _one(k: str):
         t0 = time.time()
         try:
-            rec = get_provider(k).lookup(query, query_type, deadline=deadline)
+            rec = get_provider(k).lookup(query, query_type, deadline=deadline, use_cache=use_cache)
             return k, rec, None, time.time() - t0
         except ProviderError as exc:
             return k, None, str(exc), time.time() - t0
@@ -177,7 +179,7 @@ def resolve(
             def _retry(k: str):
                 t0 = time.time()
                 try:
-                    return k, get_provider(k).by_inchikey(consensus0), None, time.time() - t0
+                    return k, get_provider(k).lookup(consensus0, "inchikey", deadline=deadline, use_cache=use_cache), None, time.time() - t0
                 except ProviderError as exc:
                     return k, None, str(exc), time.time() - t0
                 except Exception as exc:

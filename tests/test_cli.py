@@ -132,7 +132,7 @@ def test_app_update_help():
 
 def test_detect_install_source():
     """Test install source detector helper."""
-    from chemlitmus.cli.main import _detect_install_source
+    from chemlitmus.cli.commands.utilities import _detect_install_source
     source_type, detail = _detect_install_source()
     assert source_type in ["git_repo", "git_pip", "pip"]
     assert detail is not None
@@ -226,7 +226,7 @@ def test_scaffold_acyclic_is_annotated():
 
 
 def test_download_gen_all_is_offline(tmp_path, monkeypatch):
-    import chemlitmus.cli.main as m
+    import chemlitmus.cli.commands.structures as m
     def boom(*a, **k): raise AssertionError("network lookup attempted in --gen all")
     monkeypatch.setattr(m, "lookup", boom)
     r = runner.invoke(app, ["download", "CCO", "--gen", "all", "--2d", "--format", "mol", "--output-dir", str(tmp_path)])

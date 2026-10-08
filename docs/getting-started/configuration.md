@@ -44,7 +44,7 @@ These affect `resolve`, `lookup`, `batch`, `download` (without `--gen all`) and 
 | `rate_limit_delay` | `CHEMLITMUS_RATE_LIMIT_DELAY` | `0.5` | minimum seconds between requests (PubChem asks for ≤5/s) |
 | `max_workers` | `CHEMLITMUS_MAX_WORKERS` | CPU count | threads for batch downloads |
 | `batch_size` | `CHEMLITMUS_BATCH_SIZE` | `50` | records per batch |
-| `enable_cache` | `CHEMLITMUS_ENABLE_CACHE` | `true` | read/write the SQLite cache |
+| `enable_cache` | `CHEMLITMUS_ENABLE_CACHE` | `true` | read/write the SQLite cache (PubChem results and every `resolve` provider record) |
 
 If you share an outbound IP with other PubChem users and see 503 responses, raise `rate_limit_delay` to `1.0` or more.
 
