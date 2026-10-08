@@ -1,7 +1,7 @@
 # ChemLitmus
 
 <p align="center">
-  <img src="assets/chemlitmus-logo.png" alt="ChemLitmus" width="560" />
+  <img src="assets/chemlitmus-logo-white.png" alt="ChemLitmus" width="560" />
 </p>
 
 **ChemLitmus is a command-line tool and Python library for checking, cleaning, comparing and auditing small-molecule data.** It answers the questions that come up before any modelling or screening can be trusted:

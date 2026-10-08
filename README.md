@@ -1,7 +1,7 @@
 # ChemLitmus
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/AtharvaTilewale/ChemLitmus/main/docs/assets/chemlitmus-logo.png" alt="ChemLitmus" width="620" />
+  <img src="https://raw.githubusercontent.com/AtharvaTilewale/ChemLitmus/main/docs/assets/chemlitmus-logo-white.png" alt="ChemLitmus" width="620" />
 </p>
 
 <p align="center">
