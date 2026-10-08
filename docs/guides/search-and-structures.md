@@ -89,7 +89,7 @@ chemlitmus download --file library.smi --gen all --3d --format pdb --output-dir 
 chemlitmus conformers "CC(=O)Oc1ccccc1C(=O)O" --num 50 --output aspirin_confs.sdf
 ```
 
-`--gen all` never contacts PubChem — a valid SMILES is embedded directly. Formats: `sdf`, `mol`, `pdb`. For PubChem-sourced structures (including PNG depictions), omit `--gen` or use `--gen missing` to fall back to local generation only when PubChem has no record; see [PubChem lookups](pubchem.md).
+`--gen all` never contacts PubChem — a valid SMILES is embedded directly. Formats: `sdf`, `mol`, `pdb`. For PubChem-sourced structures (including PNG depictions), omit `--gen` or use `--gen missing` to fall back to local generation only when PubChem has no record; see [Database lookups](databases.md#pubchem-only-lookup-and-download).
 
 ## Reactions, atom maps, augmentation
 

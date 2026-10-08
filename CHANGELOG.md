@@ -83,6 +83,7 @@ Initial release.
 - `scaffold`: acyclic molecules are reported as `acyclic` instead of an empty cell.
 - `download --gen all`: no longer contacts PubChem for a title lookup; the command is fully offline as documented.
 - `diagnose`: RDKit parse messages captured during diagnosis no longer leak to stderr for subsequent parses.
+- `openpyxl` is declared as a dependency: `.xlsx` input (compound lists, pattern files) and `batch --format xlsx` export no longer depend on it being installed by chance.
 - Input parsing: a header-less list of names or identifiers (e.g. `aspirin`, `CHEMBL25`, `2244`) no longer loses its first line — the first row is treated as a header only when it is a recognised column name; files with a UTF-8 BOM are read correctly.
 - Removed unused imports; `ruff` configuration migrated to the `[tool.ruff.lint]` table.
 
