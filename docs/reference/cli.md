@@ -153,6 +153,16 @@ Per-pattern CSV columns: `index, name, rule_set, smarts, parses, parse_error, n_
 
 ---
 
+### `smartsdiff`
+
+```
+chemlitmus smartsdiff OLD NEW [--library PATH] [--prep P] [--max-molecules N] [--output PATH] [--json PATH] [--show N]
+```
+
+Compare two SMARTS catalogues by behaviour on the reference library. `OLD`/`NEW` are pattern files (same formats as `smartsaudit`) or `rdkit:<NAME>` built-in catalogues. Prints flagged counts per catalogue, pairing statistics, behaviour counts (`same hits`, `broadened`, `narrowed`, `shifted`, `broken`, `repaired`, `added`, `removed`), the number of molecules whose verdict changes, and the changed patterns with example molecules. See [Compare two versions of a catalogue](../guides/audit-alert-sets.md#compare-two-versions-of-a-catalogue).
+
+---
+
 ## Screening and search
 
 ### `filter`

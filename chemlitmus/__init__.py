@@ -70,6 +70,7 @@ from chemlitmus.core.smartsaudit import (
     load_reference_library,
     prepare_molecule,
 )
+from chemlitmus.core.smartsdiff import PatternDiff, RDKIT_CATALOGS, SmartsDiffResult, diff_smarts
 from chemlitmus.providers import (
     PROVIDERS,
     DEFAULT_SOURCES,
@@ -206,6 +207,11 @@ def download_structure(
     return client.download_structure(cid, format, dimension, output_dir, force)
 
 __all__ = [
+    # SMARTS catalogue diff
+    "diff_smarts",
+    "SmartsDiffResult",
+    "PatternDiff",
+    "RDKIT_CATALOGS",
     # Multi-database lookup
     "PROVIDERS",
     "DEFAULT_SOURCES",

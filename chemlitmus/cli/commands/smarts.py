@@ -178,3 +178,103 @@ def smartsaudit_cmd(
         json_out.parent.mkdir(parents=True, exist_ok=True)
         json_out.write_text(json.dumps(res.model_dump(), indent=2))
         console.print(f"[green]Full result saved to:[/green] {json_out}")
+
+
+@app.command(name="smartsdiff")
+def smartsdiff_cmd(
+    old: str = typer.Argument(..., help="Catalogue A: pattern file, or rdkit:<NAME> (e.g. rdkit:PAINS)."),
+    new: str = typer.Argument(..., help="Catalogue B: pattern file, or rdkit:<NAME>."),
+    library: Optional[Path] = typer.Option(None, "--library", "-l", help="Reference molecules (.smi/.csv/.sdf). Default: bundled ChEMBL-derived set."),
+    prep: str = typer.Option("implicit-h", "--prep", help="Molecule preparation: implicit-h, explicit-h or kekule."),
+    max_molecules: Optional[int] = typer.Option(None, "--max-molecules", help="Use only the first N reference molecules."),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Per-pattern table as CSV."),
+    json_out: Optional[Path] = typer.Option(None, "--json", help="Full result as JSON."),
+    show: int = typer.Option(15, "--show", help="Changed patterns to list in the terminal."),
+) -> None:
+    """Compare two SMARTS catalogues by what they do, not just what they say.
+
+    Patterns are paired by name, then identical SMARTS, then identical hit set; each pair is
+    classified as same hits / broadened / narrowed / shifted / broken / repaired, unpaired
+    patterns as added / removed. The headline figure is the number of reference molecules whose
+    flagged / not-flagged verdict differs between the two catalogues. Either side may be one of
+    RDKit's built-in catalogues (rdkit:PAINS, rdkit:BRENK, rdkit:NIH, …), which are compared on
+    hits alone because RDKit does not expose their SMARTS text.
+    """
+    import csv
+    import json
+
+    from chemlitmus.core.smartsaudit import PREPARATIONS
+    from chemlitmus.core.smartsdiff import RDKIT_CATALOGS, diff_smarts
+
+    if prep not in PREPARATIONS:
+        console.print(f"[red]Error:[/red] Unknown --prep {prep!r}. Valid: {', '.join(PREPARATIONS)}.")
+        raise typer.Exit(code=1)
+    for side in (old, new):
+        if side.lower().startswith("rdkit:"):
+            if side.split(":", 1)[1] not in RDKIT_CATALOGS:
+                console.print(f"[red]Error:[/red] Unknown RDKit catalogue {side!r}. Available: {', '.join('rdkit:' + c for c in RDKIT_CATALOGS)}.")
+                raise typer.Exit(code=1)
+        elif not Path(side).exists():
+            console.print(f"[red]Error:[/red] Pattern file not found: {side}")
+            raise typer.Exit(code=1)
+
+    with console.status("[bold green]Matching both catalogues against the reference library...[/bold green]"):
+        res = diff_smarts(old, new, library=library, preparation=prep, max_molecules=max_molecules)
+
+    t1 = Table(title="[bold]SMARTS catalogue diff[/bold]", show_header=True, header_style="bold magenta")
+    t1.add_column("", style="cyan"); t1.add_column("A", justify="right"); t1.add_column("B", justify="right")
+    t1.add_row("Catalogue", escape(res.source_a), escape(res.source_b))
+    t1.add_row("Patterns", str(res.n_patterns_a), str(res.n_patterns_b))
+    t1.add_row("Molecules flagged", f"{res.flagged_a} ({res.flagged_a / max(res.n_molecules, 1):.1%})", f"{res.flagged_b} ({res.flagged_b / max(res.n_molecules, 1):.1%})")
+    console.print(t1)
+    console.print(f"  Reference: {res.n_molecules} molecules ({escape(res.library_source)}), preparation [bold]{res.preparation}[/bold]")
+    console.print(f"  Paired {res.n_paired} patterns " + "(" + ", ".join(f"{v} by {k}" for k, v in res.paired_by.items()) + ")" if res.paired_by else f"  Paired {res.n_paired} patterns")
+    if res.text_counts:
+        console.print("  Text: " + ", ".join(f"{v} {k}" for k, v in res.text_counts.items()))
+    console.print("  Behaviour: " + ", ".join(f"[bold]{v}[/bold] {k}" for k, v in sorted(res.semantic_counts.items(), key=lambda kv: -kv[1])))
+    colour = "green" if res.verdict_changes == 0 else "yellow"
+    console.print(f"  [{colour}]Verdict changes: {res.verdict_changes} molecules ({res.verdict_change_fraction:.1%})[/{colour}] — "
+                  f"{res.flagged_only_b} newly flagged by B, {res.flagged_only_a} no longer flagged; {res.flagged_both} flagged by both")
+
+    changed = [d for d in res.patterns if d.semantic_status != "same hits"]
+    if changed:
+        any_smarts = any((d.a and d.a.smarts) or (d.b and d.b.smarts) for d in changed[:show])
+        t2 = Table(title=f"Changed patterns (first {min(show, len(changed))} of {len(changed)})", show_header=True, header_style="bold yellow")
+        t2.add_column("Pattern", style="cyan", overflow="fold", min_width=18); t2.add_column("Change", min_width=9); t2.add_column("Text", min_width=9)
+        t2.add_column("Hits A", justify="right"); t2.add_column("Hits B", justify="right"); t2.add_column("+", justify="right"); t2.add_column("−", justify="right")
+        t2.add_column("Jaccard", justify="right")
+        if any_smarts:
+            t2.add_column("SMARTS A → B", overflow="fold", max_width=48)
+        for d in changed[:show]:
+            sm = ""
+            if d.a and d.a.smarts and d.b and d.b.smarts and d.text_status == "rewritten":
+                sm = f"{d.a.smarts} → {d.b.smarts}"
+            elif (d.a and d.a.smarts) and not d.b:
+                sm = d.a.smarts
+            elif (d.b and d.b.smarts) and not d.a:
+                sm = d.b.smarts
+            row = [escape(d.key), d.semantic_status, d.text_status or "", str(d.hits_a), str(d.hits_b), str(d.gained), str(d.lost),
+                   f"{d.jaccard:.2f}" if d.jaccard is not None else ""]
+            t2.add_row(*(row + [escape(sm)] if any_smarts else row))
+        console.print(t2)
+    else:
+        console.print("[green]Every paired pattern has the same hit set; nothing added or removed.[/green]")
+
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with open(output, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["key", "paired_by", "semantic_status", "text_status", "name_a", "smarts_a", "rule_set_a", "parses_a", "hits_a",
+                        "name_b", "smarts_b", "rule_set_b", "parses_b", "hits_b", "gained", "lost", "jaccard", "examples_gained", "examples_lost"])
+            for d in res.patterns:
+                a, b = d.a, d.b
+                w.writerow([d.key, d.paired_by or "", d.semantic_status, d.text_status or "",
+                            a.name if a else "", a.smarts if a else "", a.rule_set if a else "", a.parses if a else "", d.hits_a,
+                            b.name if b else "", b.smarts if b else "", b.rule_set if b else "", b.parses if b else "", d.hits_b,
+                            d.gained, d.lost, "" if d.jaccard is None else f"{d.jaccard:.4f}", " ".join(d.examples_gained), " ".join(d.examples_lost)])
+        console.print(f"[green]Saved:[/green] {output}")
+    if json_out:
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        json_out.write_text(json.dumps(res.model_dump(), indent=2))
+        console.print(f"[green]Saved:[/green] {json_out}")
+    raise typer.Exit(code=0)

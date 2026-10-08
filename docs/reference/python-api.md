@@ -125,6 +125,12 @@ Copy of `mol` as `implicit-h` (unchanged), `explicit-h` (`AddHs`) or `kekule` (K
 
 ---
 
+### `diff_smarts(source_a, source_b, library=None, preparation='implicit-h', max_molecules=None, n_examples=3) -> SmartsDiffResult`
+
+Semantic diff of two catalogues. Sources are pattern files or `rdkit:<NAME>` (`RDKIT_CATALOGS`). `SmartsDiffResult`: `source_a, source_b, library_source, n_molecules, preparation, n_patterns_a, n_patterns_b, n_paired, paired_by, text_counts, semantic_counts, flagged_a, flagged_b, flagged_both, flagged_only_a, flagged_only_b, verdict_changes, verdict_change_fraction, patterns: list[PatternDiff]`. `PatternDiff`: `key, paired_by, a, b (PatternSide: name, smarts, rule_set, parses, n_hits), text_status, semantic_status, hits_a, hits_b, gained, lost, jaccard, examples_gained, examples_lost`.
+
+---
+
 ## Screening and search
 
 ### `apply_filters(smiles, rules=None, preparation='implicit-h') -> FilterResult`

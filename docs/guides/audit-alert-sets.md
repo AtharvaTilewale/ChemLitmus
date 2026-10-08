@@ -105,6 +105,54 @@ chemlitmus smartsaudit alerts.csv --library my_library.smi
 
 Every empirical verdict — breadth, dead, equivalence, subsumption, sensitivity — is then relative to *your* molecules, which is usually what you want.
 
+## Compare two versions of a catalogue
+
+A catalogue changes — a new release, a vendor's re-implementation, your own clean-up after an
+audit. `smartsdiff` tells you what changed in *behaviour*, not just in text:
+
+```bash
+chemlitmus smartsdiff alerts_v1.csv alerts_v2.csv -o diff.csv
+chemlitmus smartsdiff pains_table.csv rdkit:PAINS          # a file against RDKit's built-in catalogue
+```
+
+Patterns are paired by name, then by identical SMARTS, then by identical hit set on the
+reference library (so a renamed *and* rewritten pattern that still does the same thing is
+recognised). Each pair is classified:
+
+| Behaviour | Meaning on the reference library |
+|---|---|
+| `same hits` | identical hit set (the text may still differ) |
+| `broadened` | B hits everything A hits, plus more |
+| `narrowed` | B hits a subset of what A hits |
+| `shifted` | B gains some molecules and loses others |
+| `broken` / `repaired` | the pattern parses on one side only |
+| `added` / `removed` | present on one side only |
+
+The headline number is **verdict changes**: how many reference molecules are flagged by one
+catalogue and not the other. That is what a screen's users experience.
+
+### Example: two implementations of PAINS
+
+The PAINS SMARTS distributed in the ChEMBL structural-alert table and the PAINS catalogue
+built into RDKit descend from the same publication and pair 480 of 481 patterns by name.
+On the bundled 9,272-molecule reference set under the default (implicit-H) preparation:
+
+```
+  Molecules flagged      348 (3.8%)  vs  442 (4.8%)
+  Behaviour: 462 same hits, 17 broadened, 1 shifted, 1 removed
+  Verdict changes: 168 molecules (1.8%) — 131 newly flagged by B, 37 no longer flagged
+```
+
+Seventeen table patterns that never fire under implicit hydrogens (they contain explicit `[H]`
+atoms; see [Molecule preparation](../concepts/molecule-preparation.md)) fire in RDKit's version,
+which was rewritten with hydrogen counts; `dyes5A(27)` matches 39 molecules in the table and 6 in
+RDKit. With explicit hydrogens the difference shrinks to 79 verdict changes (0.9%). The two
+"PAINS" filters are not interchangeable, and which one a paper used is rarely stated.
+
+RDKit does not expose the SMARTS text of its catalogues, so `rdkit:` sides are compared on hits
+alone (`Text: no SMARTS`). Available: `rdkit:PAINS`, `rdkit:PAINS_A/B/C`, `rdkit:BRENK`,
+`rdkit:NIH`, `rdkit:ZINC`, `rdkit:CHEMBL_<set>`, `rdkit:ALL`.
+
 ## Then: screen with the preparation declared
 
 ```bash
@@ -130,3 +178,10 @@ defective = [p for p in res.patterns if p.dead_verdict == "never-matching atom"]
 ```
 
 Full model reference: [SMARTS auditing API](../reference/python-api.md#smarts-auditing).
+
+```python
+from chemlitmus import diff_smarts
+res = diff_smarts("alerts_v1.csv", "alerts_v2.csv")
+res.verdict_changes, res.semantic_counts
+[d for d in res.patterns if d.semantic_status == "narrowed"][0].examples_lost
+```

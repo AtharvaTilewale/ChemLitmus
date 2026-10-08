@@ -226,15 +226,21 @@ class Provider(ABC):
 # ---- shared helpers ----------------------------------------------------------------------
 
 _DB = None
+_DB_LOCK = threading.Lock()
 
 
 def _db():
-    """Lazily opened shared cache handle (same SQLite file as the PubChem cache)."""
+    """Lazily opened shared cache handle (same SQLite file as the PubChem cache).
+
+    Providers run in parallel threads, so creation and schema initialisation are serialised.
+    """
     global _DB
-    if _DB is None:
-        from chemlitmus.core.database import DatabaseManager
-        _DB = DatabaseManager()
-        _DB.init_db()
+    with _DB_LOCK:
+        if _DB is None:
+            from chemlitmus.core.database import DatabaseManager
+            db = DatabaseManager()
+            db.init_db()
+            _DB = db
     return _DB
 
 

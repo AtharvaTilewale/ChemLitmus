@@ -44,6 +44,8 @@ Initial release.
 
 ### Pattern quality control
 
+- **`smartsdiff`** — semantic diff of two SMARTS catalogues: patterns paired by name, identical SMARTS or identical hit set; each pair classified as same hits / broadened / narrowed / shifted / broken / repaired, unpaired as added / removed; the number of reference molecules whose flagged verdict changes between the catalogues. Either side may be an RDKit built-in catalogue (`rdkit:PAINS`, `rdkit:BRENK`, …), compared on hits alone.
+
 - **`smartsaudit`** — audit a SMARTS pattern set (structural alerts, substructure filters) against a reference molecule population: unparseable patterns, patterns that need explicit hydrogens, over-broad patterns, dead patterns triaged into never-matching atom / rare combination / fires-only-under-another-preparation, exact and library-equivalent duplicates, strict subsumption, and sensitivity of hit counts and per-compound verdicts to molecule preparation (implicit H, explicit H, kekulized). `--explain` decomposes a single pattern atom by atom. Matching runs multithreaded through RDKit's `SubstructLibrary`.
 - Bundled 9,272-molecule ChEMBL-derived reference library (`chemlitmus/data/`, CC BY-SA 3.0); `--library` substitutes any SMILES-bearing file.
 - **`--prep`** on `filter` and `substructure` — declare the molecule preparation used for substructure matching; recorded in every output row (`FilterResult.preparation`, `SubstructureHit.preparation`).
