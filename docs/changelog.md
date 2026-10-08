@@ -35,6 +35,13 @@ Initial release.
 - **`reaction`** — reaction SMILES/SMIRKS parsing and validation, reporting reactant, agent and product counts.
 - **`augment`** — randomized non-canonical SMILES generation for machine-learning data augmentation.
 
+### Identity, comparison and diagnosis
+
+- **`identity`** — layered molecular identity keys (`exact` > `parent` > `tautomer` / `nostereo` > `skeleton` > `formula`, built on RDKit `RegistrationHash`). Single-molecule key table, or group a collection at any level with per-level distinct-compound counts, multi-member groups and what varies within each (salt/charge form, tautomer, stereochemistry). CSV export with keys and group ids.
+- **`diff`** — structure-aware comparison of two compound collections at a chosen identity level: added, removed, unchanged, and changed-with-reason, plus multiplicity changes and Jaccard overlap. CSV and JSON export.
+- **`diagnose`** — deterministic, explainable SMILES failure diagnosis. Seven ordered checks (characters, bracket atoms, parentheses, ring closures, RDKit syntax, valence, aromaticity), each located to a character position or atom with a suggestion; safe mechanical repairs (whitespace and dash normalisation, dangling branches, unclosed ring digits, `[nH]`, non-ring aromatic atoms) are attempted and re-validated. Detects records that RDKit silently truncates at whitespace. Exit code 2 on an invalid single SMILES.
+- Python API: `compute_identity`, `group_by_identity`, `strictest_shared_level`, `describe_difference`, `diff_libraries`, `diagnose_smiles`; models `IdentityKeys`, `IdentityGroup`, `IdentityReport`, `DiffEntry`, `LibraryDiff`, `SmilesProblem`, `SmilesDiagnosis`; constants `IDENTITY_LEVELS`, `DIAGNOSTIC_CATEGORIES`.
+
 ### Pattern quality control
 
 - **`smartsaudit`** — audit a SMARTS pattern set (structural alerts, substructure filters) against a reference molecule population: unparseable patterns, patterns that need explicit hydrogens, over-broad patterns, dead patterns triaged into never-matching atom / rare combination / fires-only-under-another-preparation, exact and library-equivalent duplicates, strict subsumption, and sensitivity of hit counts and per-compound verdicts to molecule preparation (implicit H, explicit H, kekulized). `--explain` decomposes a single pattern atom by atom. Matching runs multithreaded through RDKit's `SubstructLibrary`.
@@ -54,4 +61,4 @@ Initial release.
 
 ### Tests
 
-- 162 offline tests plus 8 networked integration tests, running on Python 3.10–3.12.
+- 204 offline tests plus 8 networked integration tests, running on Python 3.10–3.12.

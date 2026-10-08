@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ChemLitmus"
 version = "1.0.0"
-description = "A high-performance tool for SMILES validation, PubChem lookup, and chemical structure retrieval"
+description = "SMILES validation and diagnosis, standardization, molecular identity, SMARTS auditing, and PubChem lookup"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}

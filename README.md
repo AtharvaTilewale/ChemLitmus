@@ -22,6 +22,9 @@ A high-performance, production-grade tool for SMILES validation, PubChem lookup,
 - **Similarity Search** - Tanimoto-based library search with threshold and top-N ranking (`similar` command)
 - **Drug-Likeness Filtering** - Lipinski Ro5, Veber, Ghose, Egan, Ro3, PAINS alerts, and QED scoring (`filter` command)
 - **SMARTS Pattern Auditing** - Validate structural-alert and substructure-filter sets for unparseable, dead, redundant, over-broad and preparation-sensitive patterns (`smartsaudit` command)
+- **Layered Molecular Identity** - Group a collection at exact / parent / tautomer / nostereo / skeleton / formula level and see what varies (`identity` command)
+- **Structure-Aware Library Diff** - Compare two compound collections by chemical identity, not SMILES text: added, removed, changed-with-reason (`diff` command)
+- **SMILES Diagnosis** - Explain *where* and *why* a SMILES fails, with character positions, suggested fixes and safe mechanical repairs (`diagnose` command)
 - **Batch Processing** - Process hundreds of compounds with progress tracking
 - **Async/Multithreading** - Fast parallel downloads with retry logic
 - **Caching** - SQLite database for storing results locally
@@ -258,6 +261,89 @@ print(result.molecular_formula)  # C2H6O
 print(result.iupac_name)         # ethanol
 print(result.iupac_name_source)  # pubchem (or 'cache' on repeat calls)
 ```
+
+## Molecular Identity and Library Comparison
+
+The same compound is written many ways: as a salt or a free base, as either tautomer, with or
+without stereo. `identity` computes nested identity keys and groups a collection at the level you
+care about; `diff` uses the same keys to compare two collections the way a chemist would.
+
+| Level | Identical when |
+|---|---|
+| `exact` | canonical SMILES match, salts and charges included |
+| `parent` | largest fragment, neutralised, stereo retained |
+| `tautomer` | parent, tautomer-insensitive (stereo retained) |
+| `nostereo` | parent, stereochemistry removed |
+| `skeleton` | parent, no stereo, tautomer-insensitive |
+| `formula` | same molecular formula of the parent |
+
+```bash
+# Keys for one molecule at every level
+chemlitmus identity "CC(N)C(=O)O.[Na+].[Cl-]"
+
+# How many distinct compounds does my file really contain, and what varies among duplicates?
+chemlitmus identity --file library.csv --level parent --output identity.csv
+
+# Compare two releases / vendor catalogues / generated sets
+chemlitmus diff release_34.smi release_35.smi --level parent --output diff.csv
+chemlitmus diff old.csv new.csv --level skeleton --json diff.json --include-unchanged
+```
+
+`diff` reports compounds **added**, **removed**, **unchanged**, and **changed** — present in both but
+written differently — with the reason: *salt, counter-ion or charge form*, *tautomer*,
+*stereochemistry*, or combinations. On the bundled reference set, 3,417 approved-drug records
+collapse to 2,289 distinct parent compounds; the other 1,128 are salt forms of another record.
+
+```python
+from chemlitmus import compute_identity, group_by_identity, diff_libraries, describe_difference
+
+k = compute_identity("C[C@H](N)C(=O)O")
+print(k.parent, k.nostereo, k.skeleton)
+
+rep = group_by_identity(smiles_list, level="skeleton")
+for g in rep.groups:                       # multi-member groups, largest first
+    print(g.size, g.differs_by, g.smiles)
+
+d = diff_libraries(old_smiles, new_smiles, level="parent")
+print(d.n_added, d.n_removed, d.n_changed, d.changes_by_kind)
+print(describe_difference(compute_identity("Oc1ccccn1"), compute_identity("O=c1cccc[nH]1")))  # tautomer
+```
+
+---
+
+## SMILES Diagnosis
+
+RDKit says a SMILES failed. `diagnose` says where and why, in a fixed order of checks, each
+pointing at a character position or an atom, and attempts the mechanical repairs that are safe:
+
+```bash
+chemlitmus diagnose "C1CC(C"
+chemlitmus diagnose "c1cncc1"                 # → pyrrole nitrogen needs [nH]; repaired: c1cc[nH]c1
+chemlitmus diagnose "CC O"                    # → RDKit silently parsed only 'CC'; whitespace splits the record
+chemlitmus diagnose --file generated.smi --output diagnosis.csv
+```
+
+| Check | Finds | Repair attempted |
+|---|---|---|
+| characters | whitespace (which RDKit silently treats as end-of-SMILES), non-ASCII dashes, invalid symbols | strip / normalise |
+| brackets | malformed `[...]` atoms, unknown element symbols | — |
+| parentheses | unmatched `(` or `)`, with position | close or remove dangling branch |
+| rings | ring digits never closed, or closed onto the same atom | drop the unclosed digit |
+| syntax | anything RDKit's parser still rejects, with its reported position | — |
+| valence | atoms over their permitted valence, with atom index | — (suggests `[N+]` etc.) |
+| aromaticity | rings with no Kekulé form; aromatic atoms outside rings | `[nH]`; upper-case the stray atom |
+
+Repairs are mechanical, not chemical: every change is listed in `repairs_applied` and the result is
+re-validated. Exit code is 2 for an invalid single SMILES, so it works as a guard in shell pipelines.
+
+```python
+from chemlitmus import diagnose_smiles
+d = diagnose_smiles("c1cc2ccccc2n1c")
+print(d.is_valid, [(p.category, p.position, p.message) for p in d.problems])
+print(d.repaired_smiles, d.repaired_is_valid, d.repairs_applied)
+```
+
+---
 
 ## SMARTS Pattern Auditing
 

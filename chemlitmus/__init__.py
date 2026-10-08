@@ -39,6 +39,23 @@ from chemlitmus.core.cheminfo import (
     compute_similarity,
     substructure_search,
 )
+from chemlitmus.core.identity import (
+    IDENTITY_LEVELS,
+    IdentityKeys,
+    IdentityGroup,
+    IdentityReport,
+    compute_identity,
+    group_by_identity,
+    strictest_shared_level,
+    describe_difference,
+)
+from chemlitmus.core.libdiff import DiffEntry, LibraryDiff, diff_libraries
+from chemlitmus.core.diagnose import (
+    DIAGNOSTIC_CATEGORIES,
+    SmilesProblem,
+    SmilesDiagnosis,
+    diagnose_smiles,
+)
 from chemlitmus.core.smartsaudit import (
     SmartsAuditResult,
     PatternAudit,
@@ -173,6 +190,23 @@ def download_structure(
     return client.download_structure(cid, format, dimension, output_dir, force)
 
 __all__ = [
+    # Molecular identity and library comparison
+    "IDENTITY_LEVELS",
+    "IdentityKeys",
+    "IdentityGroup",
+    "IdentityReport",
+    "compute_identity",
+    "group_by_identity",
+    "strictest_shared_level",
+    "describe_difference",
+    "DiffEntry",
+    "LibraryDiff",
+    "diff_libraries",
+    # SMILES diagnostics
+    "DIAGNOSTIC_CATEGORIES",
+    "SmilesProblem",
+    "SmilesDiagnosis",
+    "diagnose_smiles",
     # SMARTS auditing
     "SmartsAuditResult",
     "PatternAudit",

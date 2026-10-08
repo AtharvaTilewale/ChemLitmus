@@ -342,3 +342,59 @@ Return a copy of `mol` as `implicit-h` (unchanged), `explicit-h` (`AddHs`) or `k
 | `never_matching_atoms`, `verdict` | | Diagnosis |
 
 `FilterResult.preparation` and `SubstructureHit.preparation` record the molecule preparation used (`apply_filters(..., preparation=)`, `substructure_search(..., preparation=)`).
+
+
+## Molecular Identity and Library Comparison
+
+### `compute_identity(smiles)` → `IdentityKeys`
+
+Identity keys at every level of `IDENTITY_LEVELS` (`exact`, `parent`, `tautomer`, `nostereo`, `skeleton`, `formula`). `parent` is the largest fragment after neutralisation; `tautomer`, `nostereo` and `skeleton` are RDKit `RegistrationHash` layers of the parent.
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `input_smiles`, `is_valid`, `error` | | Record status |
+| `exact`, `parent`, `tautomer`, `nostereo`, `skeleton`, `formula` | `str` | Keys |
+| `n_fragments`, `had_charge`, `has_stereo` | | Properties of the input |
+| `key(level)` | `str` | Key at a named level |
+
+### `group_by_identity(smiles, level="parent", keys=None)` → `IdentityReport`
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `level`, `n_records`, `n_valid` | | Inputs |
+| `n_groups` | `int` | Distinct compounds at this level |
+| `n_collapsed` | `int` | Records sharing a key with an earlier record |
+| `n_groups_by_level` | `dict` | Distinct keys at every level |
+| `groups` | `list[IdentityGroup]` | Multi-member groups (`key`, `size`, `indices`, `smiles`, `distinct_exact`, `differs_by`), largest first |
+| `keys` | `list[IdentityKeys]` | Per-record keys |
+
+### `strictest_shared_level(a, b)` / `describe_difference(a, b)`
+
+For two `IdentityKeys`: the strictest level at which they agree (or `None`), and a plain-language description — `identical`, `salt, counter-ion or charge form`, `tautomer`, `stereochemistry`, `stereochemistry and tautomer`, `constitution (same formula only)`, `different compounds`.
+
+### `diff_libraries(smiles_a, smiles_b, level="parent", keys_a=None, keys_b=None, include_unchanged=False)` → `LibraryDiff`
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `n_a`, `n_b`, `n_valid_a`, `n_valid_b`, `n_keys_a`, `n_keys_b` | `int` | Sizes; `n_keys_*` are distinct compounds at the level |
+| `n_added`, `n_removed`, `n_unchanged`, `n_changed` | `int` | Outcome counts |
+| `changes_by_kind` | `dict[str,int]` | Changed compounds by reason |
+| `multiplicity_changes` | `int` | Shared compounds whose record count differs |
+| `jaccard` | `float` | Shared / all compounds (property) |
+| `entries` | `list[DiffEntry]` | `status`, `key`, `smiles_a`, `smiles_b`, `count_a`, `count_b`, `change`; removed, then added, then changed |
+
+## SMILES Diagnosis
+
+### `diagnose_smiles(smiles, try_repair=True)` → `SmilesDiagnosis`
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `input_smiles`, `is_valid`, `canonical_smiles` | | Status; a record with internal whitespace is reported invalid even though RDKit parses its first token |
+| `problems` | `list[SmilesProblem]` | Ordered by `DIAGNOSTIC_CATEGORIES` then position |
+| `repaired_smiles`, `repaired_is_valid`, `repairs_applied` | | Mechanical repair outcome, when attempted |
+| `primary_category` | `str` | Category of the first problem (property) |
+| `caret_line()` | `str` | `^` markers aligned under the input |
+
+`SmilesProblem`: `category`, `message`, `position` (0-based), `length`, `atom_index`, `atom_indices`, `suggestion`.
+
+`DIAGNOSTIC_CATEGORIES = ["characters", "brackets", "parentheses", "rings", "syntax", "valence", "aromaticity"]`.

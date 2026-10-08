@@ -50,6 +50,15 @@ Welcome to the comprehensive tutorial for **ChemLitmus**. This guide is designed
   - [14.2 Explain one pattern](#142-explain-one-pattern)
   - [14.3 Declare the preparation when screening](#143-declare-the-preparation-when-screening)
   - [14.4 Python API](#144-python-api)
+- [15. Molecular Identity and Library Comparison](#15-molecular-identity-and-library-comparison)
+  - [15.1 Identity keys for one molecule](#151-identity-keys-for-one-molecule)
+  - [15.2 How many compounds does my file really contain?](#152-how-many-compounds-does-my-file-really-contain)
+  - [15.3 Compare two collections](#153-compare-two-collections)
+  - [15.4 Python API](#154-python-api)
+- [16. SMILES Diagnosis](#16-smiles-diagnosis)
+  - [16.1 One string](#161-one-string)
+  - [16.2 A file of generated or scraped SMILES](#162-a-file-of-generated-or-scraped-smiles)
+  - [16.3 What the checks mean](#163-what-the-checks-mean)
 - [Learn More](#learn-more)
 
 ---
@@ -743,3 +752,93 @@ with open("audit.csv", "w", newline="") as f:
 e = explain_smarts("c:1(:c:c:c(:c:c:1)-[#6]=[#7]-[#7])-[#8]-[#1]", library=mols)
 print(e.verdict, e.hits_by_preparation)
 ```
+
+
+# 15. Molecular Identity and Library Comparison
+
+## 15.1 Identity keys for one molecule
+
+```bash
+chemlitmus identity "CC(N)C(=O)O.[Na+].[Cl-]"
+```
+
+Shows the key at every level. Levels nest: two records identical at `exact` are identical at every
+looser level; two records that first agree at `nostereo` differ only in stereochemistry.
+
+## 15.2 How many compounds does my file really contain?
+
+```bash
+chemlitmus identity --file library.csv --level parent
+chemlitmus identity --file library.csv --level skeleton --output identity.csv --show 30
+```
+
+The first table counts distinct compounds at every level; the second lists groups with more than
+one member and what varies among them. The CSV carries every record's keys plus a `group_id` at
+the chosen level, so duplicates can be collapsed or inspected downstream.
+
+## 15.3 Compare two collections
+
+```bash
+chemlitmus diff chembl_34.smi chembl_35.smi --level parent --output diff.csv
+chemlitmus diff vendor_2025.csv vendor_2026.csv --level skeleton --json diff.json
+```
+
+Choose the level to match the question. `exact` asks "did any string change"; `parent` ignores
+salt and charge form; `nostereo` additionally ignores stereo; `skeleton` ignores stereo and
+tautomer form. Compounds present in both collections but written differently are listed as
+**changed** with the reason, so a release note can say "41 compounds had stereo assigned, 12 moved
+to a different salt form" rather than "1,203 SMILES differ".
+
+## 15.4 Python API
+
+```python
+from chemlitmus import compute_identity, group_by_identity, diff_libraries, describe_difference
+
+rep = group_by_identity(smiles, level="parent")
+dupes = [g for g in rep.groups if "salt, counter-ion or charge form" in g.differs_by]
+
+d = diff_libraries(old, new, level="parent")
+for e in d.entries:
+    if e.status == "changed":
+        print(e.smiles_a, "->", e.smiles_b, e.change)
+```
+
+# 16. SMILES Diagnosis
+
+## 16.1 One string
+
+```bash
+chemlitmus diagnose "C1CC(C"
+chemlitmus diagnose "CN(C)(C)C"
+chemlitmus diagnose "c1cncc1" --no-repair
+```
+
+Output: the input with `^` markers under each problem, one line per finding with its category,
+message, position or atom index, and a suggestion; then the repaired string and the list of
+repairs applied, if a mechanical repair was possible. Exit code 0 for valid, 2 for invalid.
+
+## 16.2 A file of generated or scraped SMILES
+
+```bash
+chemlitmus diagnose --file generated.smi --output diagnosis.csv          # invalid records only
+chemlitmus diagnose --file generated.smi --output diagnosis.csv --all    # every record
+```
+
+The summary table counts invalid records by primary problem and how many were repaired
+mechanically. The CSV has one row per record with all problems, positions, suggestions and the
+repair outcome.
+
+## 16.3 What the checks mean
+
+| Category | Typical cause |
+|---|---|
+| characters | a space in the cell (RDKit silently parses only the part before it), an en dash copied from a PDF, a stray letter |
+| brackets | `[C@@H` missing its `]`, `[Xx]` unknown element, `[CH3+2-]` malformed |
+| parentheses | a branch opened and never closed, or a stray `)` |
+| rings | a ring digit opened and never closed (RDKit: "unclosed ring") |
+| syntax | anything else RDKit's parser rejects; the position is RDKit's own |
+| valence | four-connected neutral nitrogen (needs `[N+]`), five-bonded carbon |
+| aromaticity | pyrrole-type `n` without `[nH]`, odd all-carbon aromatic ring, aromatic atom outside a ring |
+
+Repairs are mechanical. They make a string parse; they do not know what molecule was intended.
+Treat `repaired_smiles` as a candidate to review, not as the answer.

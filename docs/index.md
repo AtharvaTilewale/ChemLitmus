@@ -22,6 +22,9 @@ A high-performance, production-grade tool for SMILES validation, PubChem lookup,
 - **Similarity Search** - Tanimoto-based library search with threshold and top-N (`similar` command)
 - **Drug-Likeness Filtering** - Lipinski, Veber, Ghose, Egan, Ro3, PAINS, QED (`filter` command) from SMILES via RDKit with forcefield optimization
 - **SMARTS Pattern Auditing** - Validate structural-alert and substructure-filter sets for unparseable, dead, redundant, over-broad and preparation-sensitive patterns (`smartsaudit` command)
+- **Layered Molecular Identity** - Group a collection at exact / parent / tautomer / nostereo / skeleton / formula level and see what varies (`identity` command)
+- **Structure-Aware Library Diff** - Compare two compound collections by chemical identity, not SMILES text (`diff` command)
+- **SMILES Diagnosis** - Explain where and why a SMILES fails, with positions, suggestions and safe repairs (`diagnose` command)
 - **Batch Processing** - Process hundreds of compounds with progress tracking
 - **Async/Multithreading** - Fast parallel downloads with retry logic
 - **Caching** - SQLite database for storing results locally

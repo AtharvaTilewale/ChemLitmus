@@ -30,6 +30,9 @@ from chemlitmus import (
     map_atoms, AtomMapResult,
     audit_smarts, explain_smarts, load_patterns, load_reference_library,
     SmartsAuditResult, SmartsExplanation, PREPARATIONS, AUDIT_CHECKS,
+    compute_identity, group_by_identity, IdentityReport, IDENTITY_LEVELS,
+    diff_libraries, LibraryDiff,
+    diagnose_smiles, SmilesDiagnosis,
 )
 from chemlitmus.config import settings
 from chemlitmus.core.pubchem import PubChemCompound
@@ -38,7 +41,7 @@ from chemlitmus.utils.export import export_results
 
 app = typer.Typer(
     name="chemlitmus",
-    help="ChemLitmus: SMILES validation, standardization, SMARTS auditing, and PubChem lookup.",
+    help="ChemLitmus: SMILES validation and diagnosis, standardization, molecular identity, SMARTS auditing, and PubChem lookup.",
     add_completion=False,
 )
 console = Console()
@@ -1673,6 +1676,264 @@ def atommap_cmd(
         
     console.print(f"\n[dim]Input:[/dim]  {smiles}")
     console.print(f"[dim]Mapped:[/dim] [bright_cyan]{result.mapped_smiles}[/bright_cyan]\n")
+
+# =============================================================================
+# identity command
+# =============================================================================
+
+@app.command(name="identity")
+def identity_cmd(
+    smiles: str = typer.Argument(None, help="Single SMILES: show its identity keys at every level."),
+    file: Optional[Path] = typer.Option(None, "--file", "-f", help="Collection to group (CSV/.smi/.sdf)."),
+    level: str = typer.Option("parent", "--level", "-l", help="Identity level: exact, parent, tautomer, nostereo, skeleton, formula."),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Write per-record identity keys and group ids to CSV."),
+    show: int = typer.Option(15, "--show", help="Number of multi-member groups to list."),
+) -> None:
+    """Compute layered molecular identity, or group a collection by identity level.
+
+    Levels nest from strictest to loosest: exact (salts and charges included) > parent
+    (largest fragment, neutralised) > tautomer / nostereo > skeleton > formula. Grouping a
+    collection at a level shows which records are the same compound at that resolution and
+    what varies among them (salt form, tautomer, stereochemistry).
+    """
+    import csv
+
+    if level not in IDENTITY_LEVELS:
+        console.print(f"[red]Error:[/red] Unknown level {level!r}. Valid: {', '.join(IDENTITY_LEVELS)}")
+        raise typer.Exit(code=1)
+    if smiles is None and file is None:
+        console.print("[red]Error:[/red] Provide a SMILES argument or --file.")
+        raise typer.Exit(code=1)
+
+    if smiles is not None and file is None:
+        k = compute_identity(smiles)
+        if not k.is_valid:
+            console.print(f"[red]Error:[/red] {k.error}")
+            raise typer.Exit(code=1)
+        t = Table(title="[bold]Identity Keys[/bold]", show_header=True, header_style="bold magenta")
+        t.add_column("Level", style="cyan"); t.add_column("Key")
+        for lv in IDENTITY_LEVELS:
+            t.add_row(lv, escape(k.key(lv) or ""))
+        console.print(t)
+        console.print(f"[dim]fragments={k.n_fragments}  charged={'yes' if k.had_charge else 'no'}  stereo specified={'yes' if k.has_stereo else 'no'}[/dim]")
+        return
+
+    records = parse_compounds_file(file)
+    with console.status(f"[bold green]Computing identity for {len(records)} records...[/bold green]"):
+        rep = group_by_identity(records, level=level)
+
+    t = Table(title=f"[bold]Identity Report — {rep.n_records} records at level '{level}'[/bold]", show_header=True, header_style="bold magenta")
+    t.add_column("Level", style="cyan"); t.add_column("Distinct compounds", justify="right"); t.add_column("Collapsed records", justify="right")
+    for lv in IDENTITY_LEVELS:
+        n = rep.n_groups_by_level.get(lv, 0)
+        mark = " [bold]<[/bold]" if lv == level else ""
+        t.add_row(lv + mark, str(n), str(rep.n_valid - n))
+    console.print(t)
+    console.print(f"[dim]valid={rep.n_valid}  invalid={rep.n_records - rep.n_valid}  distinct at '{level}'={rep.n_groups}  removable duplicates={rep.n_collapsed}[/dim]")
+
+    if rep.groups:
+        g = Table(title=f"Groups with >1 member (first {min(show, len(rep.groups))} of {len(rep.groups)})", show_header=True, header_style="bold blue")
+        g.add_column("Size", justify="right"); g.add_column("Varies by", style="yellow"); g.add_column("Members", max_width=70, overflow="fold")
+        for grp in rep.groups[:show]:
+            g.add_row(str(grp.size), ", ".join(grp.differs_by) or "representation only", escape("  |  ".join(grp.smiles[:4]) + ("  ..." if grp.size > 4 else "")))
+        console.print(g)
+
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        key_to_group = {}
+        for grp in rep.groups:
+            key_to_group[grp.key] = grp
+        with open(output, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["index", "input_smiles", "is_valid"] + IDENTITY_LEVELS + [f"group_id_{level}", f"group_size_{level}", "group_varies_by"])
+            group_ids = {}
+            for i, k in enumerate(rep.keys):
+                key = k.key(level) if k.is_valid else None
+                gid = group_ids.setdefault(key, len(group_ids)) if key is not None else ""
+                grp = key_to_group.get(key)
+                w.writerow([i, k.input_smiles, k.is_valid] + [(k.key(lv) or "") for lv in IDENTITY_LEVELS]
+                           + [gid, grp.size if grp else (1 if key else ""), ";".join(grp.differs_by) if grp else ""])
+        console.print(f"[green]Saved:[/green] {output}")
+
+
+# =============================================================================
+# diff command
+# =============================================================================
+
+@app.command(name="diff")
+def diff_cmd(
+    file_a: Path = typer.Argument(..., help="Reference (older) collection."),
+    file_b: Path = typer.Argument(..., help="Comparison (newer) collection."),
+    level: str = typer.Option("parent", "--level", "-l", help="Identity level for matching: exact, parent, tautomer, nostereo, skeleton, formula."),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Write added/removed/changed entries to CSV."),
+    json_out: Optional[Path] = typer.Option(None, "--json", help="Write the complete result to JSON."),
+    include_unchanged: bool = typer.Option(False, "--include-unchanged", help="Also list unchanged compounds."),
+    show: int = typer.Option(10, "--show", help="Entries to list per category in the terminal."),
+) -> None:
+    """Structure-aware comparison of two compound collections.
+
+    Matches compounds at the chosen identity level and reports what was added, removed, left
+    unchanged, or kept but written differently (salt form, tautomer, stereochemistry), so
+    database releases, vendor catalogues and generated libraries can be compared without
+    being fooled by SMILES formatting.
+    """
+    import csv
+    import json
+
+    if level not in IDENTITY_LEVELS:
+        console.print(f"[red]Error:[/red] Unknown level {level!r}. Valid: {', '.join(IDENTITY_LEVELS)}")
+        raise typer.Exit(code=1)
+    a, b = parse_compounds_file(file_a), parse_compounds_file(file_b)
+    with console.status(f"[bold green]Comparing {len(a)} vs {len(b)} records at level '{level}'...[/bold green]"):
+        res = diff_libraries(a, b, level=level, include_unchanged=include_unchanged)
+
+    t = Table(title=f"[bold]Library Diff — {file_a.name} → {file_b.name} at level '{level}'[/bold]", show_header=True, header_style="bold magenta")
+    t.add_column("", style="cyan"); t.add_column("Count", justify="right"); t.add_column("Meaning", style="dim")
+    t.add_row("Compounds in A", str(res.n_keys_a), f"{res.n_valid_a} valid records")
+    t.add_row("Compounds in B", str(res.n_keys_b), f"{res.n_valid_b} valid records")
+    t.add_row("[green]Added[/green]", str(res.n_added), "in B only")
+    t.add_row("[red]Removed[/red]", str(res.n_removed), "in A only")
+    t.add_row("Unchanged", str(res.n_unchanged), "same compound, same representation")
+    t.add_row("[yellow]Changed[/yellow]", str(res.n_changed), "same compound at this level, different representation")
+    t.add_row("Multiplicity changes", str(res.multiplicity_changes), "record count differs between A and B")
+    t.add_row("Overlap (Jaccard)", f"{res.jaccard:.3f}", "shared compounds / all compounds")
+    console.print(t)
+    if res.changes_by_kind:
+        k = Table(title="What changed", show_header=True, header_style="bold blue")
+        k.add_column("Kind", style="yellow"); k.add_column("Compounds", justify="right")
+        for kind, n in sorted(res.changes_by_kind.items(), key=lambda x: -x[1]):
+            k.add_row(kind, str(n))
+        console.print(k)
+
+    for status, style in (("removed", "red"), ("added", "green"), ("changed", "yellow")):
+        rows = [e for e in res.entries if e.status == status]
+        if not rows:
+            continue
+        et = Table(title=f"[{style}]{status.capitalize()}[/{style}] (first {min(show, len(rows))} of {len(rows)})", show_header=True, header_style="bold blue")
+        et.add_column("A", max_width=40, overflow="fold"); et.add_column("B", max_width=40, overflow="fold")
+        if status == "changed":
+            et.add_column("Change", style="yellow")
+        for e in rows[:show]:
+            cells = [escape(" | ".join(e.smiles_a)), escape(" | ".join(e.smiles_b))]
+            if status == "changed":
+                cells.append(e.change or "")
+            et.add_row(*cells)
+        console.print(et)
+
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with open(output, "w", newline="", encoding="utf-8") as fh:
+            w = csv.DictWriter(fh, fieldnames=["status", "level", "key", "smiles_a", "smiles_b", "count_a", "count_b", "change"])
+            w.writeheader()
+            for e in res.entries:
+                w.writerow({"status": e.status, "level": level, "key": e.key, "smiles_a": "|".join(e.smiles_a),
+                            "smiles_b": "|".join(e.smiles_b), "count_a": e.count_a, "count_b": e.count_b, "change": e.change or ""})
+        console.print(f"[green]Saved:[/green] {output}")
+    if json_out:
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        json_out.write_text(json.dumps(res.model_dump(), indent=2))
+        console.print(f"[green]Saved:[/green] {json_out}")
+
+
+# =============================================================================
+# diagnose command
+# =============================================================================
+
+def _print_diagnosis(d: SmilesDiagnosis) -> None:
+    if d.is_valid:
+        console.print(Panel(Text(f"  {d.input_smiles}\n  valid  →  {d.canonical_smiles}", style="green"), title="[bold]SMILES Diagnosis[/bold]", border_style="green"))
+        return
+    body = Text()
+    body.append(f"  {d.input_smiles}\n", style="bold")
+    body.append(f"  {d.caret_line()}\n", style="bold red")
+    for p in d.problems:
+        where = f"position {p.position}" if p.position is not None else ("atom " + str(p.atom_index) if p.atom_index is not None else "")
+        body.append(f"  [{p.category}] ", style="yellow"); body.append(f"{p.message}" + (f"  ({where})" if where else "") + "\n")
+        if p.suggestion:
+            body.append(f"      → {p.suggestion}\n", style="dim")
+    if d.repaired_smiles is not None:
+        if d.repaired_is_valid:
+            body.append(f"\n  Repaired: {d.repaired_smiles}\n", style="green")
+        else:
+            body.append(f"\n  Attempted repair still invalid: {d.repaired_smiles}\n", style="red")
+        for r in d.repairs_applied:
+            body.append(f"      • {r}\n", style="dim")
+    console.print(Panel(body, title="[bold]SMILES Diagnosis[/bold]", border_style="red"))
+
+
+@app.command(name="diagnose")
+def diagnose_cmd(
+    smiles: str = typer.Argument(None, help="SMILES string to diagnose."),
+    file: Optional[Path] = typer.Option(None, "--file", "-f", help="Batch input (CSV/.smi)."),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Write per-record diagnoses to CSV."),
+    no_repair: bool = typer.Option(False, "--no-repair", help="Do not attempt mechanical repairs."),
+    only_invalid: bool = typer.Option(True, "--only-invalid/--all", help="In batch mode, report only invalid records (default) or all."),
+) -> None:
+    """Explain why a SMILES string fails to parse, with character positions and suggested fixes.
+
+    Checks run in a fixed order — characters, bracket atoms, parentheses, ring closures,
+    RDKit syntax, valence, aromaticity — and each finding points at a position or an atom.
+    Safe mechanical repairs (whitespace, dangling branches, unclosed ring digits, [nH],
+    non-ring aromatic atoms) are attempted and re-validated.
+    """
+    import csv
+
+    if smiles is None and file is None:
+        console.print("[red]Error:[/red] Provide a SMILES argument or --file.")
+        raise typer.Exit(code=1)
+
+    if smiles is not None and file is None:
+        d = diagnose_smiles(smiles, try_repair=not no_repair)
+        _print_diagnosis(d)
+        raise typer.Exit(code=0 if d.is_valid else 2)
+
+    records = parse_compounds_file(file)
+    results = []
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), BarColumn(), TaskProgressColumn(), console=console) as progress:
+        task = progress.add_task("Diagnosing...", total=len(records))
+        for s in records:
+            results.append(diagnose_smiles(s, try_repair=not no_repair))
+            progress.advance(task)
+    invalid = [d for d in results if not d.is_valid]
+    repaired = sum(1 for d in invalid if d.repaired_is_valid)
+    by_cat = {}
+    for d in invalid:
+        c = d.primary_category or "unknown"
+        by_cat[c] = by_cat.get(c, 0) + 1
+
+    t = Table(title=f"[bold]SMILES Diagnosis — {len(records)} records[/bold]", show_header=True, header_style="bold magenta")
+    t.add_column("Primary problem", style="cyan"); t.add_column("Records", justify="right")
+    for c, n in sorted(by_cat.items(), key=lambda x: -x[1]):
+        t.add_row(c, str(n))
+    t.add_row("[bold]invalid total[/bold]", f"[bold]{len(invalid)}[/bold]")
+    t.add_row("repaired mechanically", str(repaired))
+    t.add_row("valid", str(len(records) - len(invalid)))
+    console.print(t)
+
+    shown = invalid if only_invalid else results
+    for d in shown[:10]:
+        _print_diagnosis(d)
+    if len(shown) > 10:
+        console.print(f"[dim]... {len(shown) - 10} more; use --output to save all.[/dim]")
+
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with open(output, "w", newline="", encoding="utf-8") as fh:
+            w = csv.DictWriter(fh, fieldnames=["input_smiles", "is_valid", "canonical_smiles", "primary_category", "n_problems",
+                                               "problems", "positions", "suggestions", "repaired_smiles", "repaired_is_valid", "repairs_applied"])
+            w.writeheader()
+            for d in (results if not only_invalid else invalid):
+                w.writerow({
+                    "input_smiles": d.input_smiles, "is_valid": d.is_valid, "canonical_smiles": d.canonical_smiles or "",
+                    "primary_category": d.primary_category or "", "n_problems": len(d.problems),
+                    "problems": " | ".join(f"[{p.category}] {p.message}" for p in d.problems),
+                    "positions": ";".join("" if p.position is None else str(p.position) for p in d.problems),
+                    "suggestions": " | ".join(p.suggestion for p in d.problems if p.suggestion),
+                    "repaired_smiles": d.repaired_smiles or "", "repaired_is_valid": "" if d.repaired_is_valid is None else d.repaired_is_valid,
+                    "repairs_applied": " | ".join(d.repairs_applied),
+                })
+        console.print(f"[green]Saved:[/green] {output}")
+
 
 # =============================================================================
 # smartsaudit command
