@@ -1,0 +1,648 @@
+# ChemLitmus Practical Guide
+
+Welcome to the comprehensive tutorial for **ChemLitmus**. This guide is designed to take you from basic lookups to advanced, multithreaded batch processing using both the Command Line Interface (CLI) and the Python API.
+
+---
+
+# Table of Contents
+
+- [ChemLitmus Practical Guide](#chemlitmus-practical-guide)
+- [Table of Contents](#table-of-contents)
+- [1. System Management](#1-system-management)
+    - [CLI Commands](#cli-commands)
+- [2. Single Compound Lookups](#2-single-compound-lookups)
+  - [CLI Examples](#cli-examples)
+    - [Basic Lookups:](#basic-lookups)
+    - [Advanced CLI Flags:](#advanced-cli-flags)
+    - [Python API Examples](#python-api-examples)
+- [3. Batch Processing \& File I/O](#3-batch-processing--file-io)
+  - [CLI Examples](#cli-examples-1)
+  - [Python API Examples](#python-api-examples-1)
+- [4. Chemical Structure Downloads](#4-chemical-structure-downloads)
+  - [Python API Examples](#python-api-examples-2)
+- [5. Advanced SMILES Validation (Python API)](#5-advanced-smiles-validation-python-api)
+- [6. Fingerprint Generation](#6-fingerprint-generation)
+  - [CLI Examples](#cli)
+  - [Python API Examples](#python-api)
+- [7. Similarity Search](#7-similarity-search)
+  - [CLI Examples](#cli)
+  - [Python API Examples](#python-api)
+- [8. Substructure Search](#8-substructure-search)\n  - [CLI](#cli)\n  - [Python API](#python-api)\n- [9. Drug-Likeness Filtering (ADMET)](#8-drug-likeness-filtering-admet)
+  - [CLI Examples](#cli)
+  - [Python API Examples](#python-api)
+- [10. Standardization Pipeline](#9-standardization-pipeline)
+  - [Python API](#python-api-1)
+- [11. Tautomer Enumeration](#10-tautomer-enumeration)
+  - [CLI](#cli)
+  - [Python API](#python-api-3)
+- [12. IUPAC Identifier Generation](#11-iupac-identifier-generation)
+  - [Python API](#python-api-2)
+- [13. Advanced Cheminformatics](#13-advanced-cheminformatics)
+  - [13.1 Reaction SMILES Validation](#131-reaction-smiles-validation)
+  - [13.2 Multiple Conformer Generation](#132-multiple-conformer-generation)
+  - [13.3 Murcko Scaffold Extraction](#133-murcko-scaffold-extraction)
+  - [13.4 Stereochemistry Analysis](#134-stereochemistry-analysis)
+  - [13.5 R-Group Decomposition](#135-r-group-decomposition)
+  - [13.6 SMILES Augmentation](#136-smiles-augmentation)
+  - [13.7 Atom Mapping](#137-atom-mapping)
+- [Learn More](#learn-more)
+
+---
+
+# 1. System Management
+
+ChemLitmus manages local SQLite caches and logs to ensure high performance and respect for PubChem's rate limits.
+
+### CLI Commands
+
+Check your environment paths, active threads, and database size:
+
+```bash
+chemlitmus status
+```
+
+Initialize the database schema and storage directories (Run this once after installation):
+
+```bash
+chemlitmus init
+```
+
+Keep your tool up-to-date. This smart command automatically checks PyPI (or GitHub if you cloned the source) and safely applies updates:
+
+```bash
+chemlitmus update
+```
+
+If your local database gets corrupted or you want to clear your cache completely, perform a factory reset:
+
+```bash
+chemlitmus reinstall -y
+```
+
+---
+
+# 2. Single Compound Lookups
+
+ChemLitmus's "Smart Auto-Routing" automatically detects if your input is a SMILES string, an InChIKey, a PubChem CID, or a Chemical Name.
+
+## CLI Examples
+
+### Basic Lookups:
+
+```bash
+# Lookup by SMILES
+chemlitmus lookup "CC(=O)OC1=CC=CC=C1C(=O)O"
+
+# Lookup by Common/IUPAC Name
+chemlitmus lookup "Aspirin"
+chemlitmus lookup "benzene"
+```
+
+### Advanced CLI Flags:
+
+```bash
+# Bypass the local SQLite cache to force a fresh network request
+chemlitmus lookup "Caffeine" --no-cache
+
+# Force the engine to treat the input specifically as a CID
+chemlitmus lookup 2244 --cid
+
+# Output raw JSON instead of a rich table (ideal for piping into `jq` or other scripts)
+chemlitmus lookup "Ibuprofen" --json
+```
+
+### Python API Examples
+
+```python
+from chemlitmus import lookup, lookup_by_name
+
+# 1. Smart Auto-Detect Lookup
+compound = lookup("c1ccccc1")
+print(f"Name: {compound.iupac_name}, MW: {compound.molecular_weight}")
+
+# 2. Explicit Lookup by Name (Bypasses SMILES validation checks)
+drug = lookup_by_name("Amoxicillin")
+print(f"CID: {drug.cid}, Formula: {drug.molecular_formula}")
+
+# 3. Accessing detailed properties (PubChemCompound model)
+if drug:
+    print(f"H-Bond Donors: {drug.hbond_donor_count}")
+    print(f"XLogP: {drug.xlogp}")
+    print(f"InChIKey: {drug.inchikey}")
+```
+
+---
+
+# 3. Batch Processing & File I/O
+
+Process hundreds of compounds in seconds. ChemLitmus uses multithreading (`concurrent.futures`) combined with a strict rate limiter to fetch data as fast as possible without getting banned by PubChem.
+
+Supported Input Formats: `.csv`, `.tsv`, `.xlsx`, `.smi`, `.sdf`, `.txt`
+
+(ChemLitmus automatically detects the column containing SMILES/Names!)
+
+## CLI Examples
+
+```bash
+# Basic batch processing (auto-generates a CSV output and a .log report)
+chemlitmus batch input_data.csv
+
+# Output to an Excel file and keep duplicate entries (duplicates are removed by default)
+chemlitmus batch raw_smiles.txt --format xlsx --keep-duplicates
+
+# Specify a custom output path and export as JSON
+chemlitmus batch data.sdf --output /my_project/clean_data.json --format json
+```
+
+## Python API Examples
+
+```python
+from chemlitmus import lookup_file, lookup
+
+# 1. Process a file directly in your script
+results = lookup_file(
+    input_file="messy_data.csv",
+    output_file="clean_results.xlsx",
+    output_format="xlsx",
+    remove_duplicates=True
+)
+
+print(f"Successfully processed {len(results)} unique compounds.")
+
+# 2. Custom loop for lists (No file needed)
+my_chemicals = ["Aspirin", "c1ccccc1", "Invalid_Chemical_Name"]
+valid_compounds = []
+
+for chem in my_chemicals:
+    data = lookup(chem, use_cache=True)
+    if data and data.cid:
+        valid_compounds.append(data)
+```
+
+---
+
+# 4. Chemical Structure Downloads & Generation
+
+Download physical structure files from PubChem or generate 2D/3D conformations offline from SMILES using RDKit with built-in resume logic.
+
+Supported Formats: `sdf`, `mol`, `pdb`, `png` (generation supports `sdf`, `mol`, `pdb`)
+
+Supported Dimensions: `2d`, `3d`
+
+Downloaded and generated files are skipped automatically unless `--force` is used.
+
+```bash
+# Download a single 3D SDF file by its PubChem CID
+chemlitmus download 2244 --format sdf --3d
+
+# Generate all 3D structures locally from SMILES using RDKit (--gen all)
+chemlitmus download "CC(=O)OC1=CC=CC=C1C(=O)O" --gen all --3d --format sdf
+
+# Generate 2D MOL structure locally from SMILES
+chemlitmus download "c1ccccc1" --gen all --2d --format mol
+
+# Batch download with fallback to local generation (--gen missing)
+chemlitmus download -i my_compounds.csv --gen missing --format sdf --3d --output-dir ./structures/
+
+# Batch generate all structures offline from file
+chemlitmus download -i my_compounds.smi --gen all --format pdb --3d --output-dir ./3d_models/
+
+# Force overwrite existing files (disables resume logic)
+chemlitmus download -i my_compounds.csv --format sdf --force
+```
+
+## Python API Examples
+
+```python
+from chemlitmus import download_structure
+
+# Download a single structure programmatically
+status = download_structure(
+    cid=2244, 
+    format="sdf", 
+    dimension="3d", 
+    output_dir="my_structures",
+    force=False
+)
+
+print(f"Download status: {status}")
+```
+
+# 5. Advanced SMILES Validation (Python API)
+
+If you only need to validate SMILES strings and calculate RDKit descriptors locally without querying the PubChem internet database, you can use the core SMILES engine directly.
+
+```python
+from chemlitmus import validate_smiles
+
+# Validate a complex SMILES string
+result = validate_smiles("CC(=O)OC1=CC=CC=C1C(=O)O")
+
+if result.is_valid:
+    print(f"Standardized SMILES: {result.canonical_smiles}")
+    print(f"Exact Mass: {result.molecular_weight}")
+    print(f"Heavy Atoms: {result.heavy_atom_count}")
+    print(f"TPSA: {result.tpsa}")
+    print(f"Calculated LogP: {result.logp}")
+else:
+    print(f"Invalid SMILES! Error: {result.error_message}")
+```
+
+---
+
+# Learn More
+
+- **[README.md](https://github.com/AtharvaTilewale/ChemLitmus/blob/main/README.md)** — Installation and Quick Start
+- **[API Documentation](https://chemlitmus.readthedocs.io/en/latest/)** — Python API reference
+- **[GitHub Issues](https://github.com/AtharvaTilewale/ChemLitmus/issues)** — Bug reports and feature requests
+- **[Discussions](https://github.com/AtharvaTilewale/ChemLitmus/discussions)** — Community support
+
+---
+
+# 6. Fingerprint Generation
+
+Generate molecular fingerprints offline from SMILES strings. Useful for ML model preparation, similarity search, and database indexing.
+
+## CLI
+
+```bash
+# Single compound - ECFP4 (default)
+chemlitmus fingerprint "CC(=O)OC1=CC=CC=C1C(=O)O" --type ecfp4
+
+# MACCS keys (167-bit)
+chemlitmus fingerprint "CCO" --type maccs
+
+# All fingerprint types at once
+chemlitmus fingerprint "CC(=O)OC1=CC=CC=C1C(=O)O" --type all
+
+# Batch file - save to CSV
+chemlitmus fingerprint --file compounds.smi --type ecfp4 --bits 2048 --output fingerprints.csv
+
+# Custom bit size
+chemlitmus fingerprint "CC(=O)OC1=CC=CC=C1C(=O)O" --type rdkit --bits 1024
+```
+
+**Supported fingerprint types:**
+
+| Type | Algorithm | Default Bits | Use Case |
+|------|-----------|-------------|----------|
+| `ecfp4` | Morgan (radius=2) | 2048 | General ML, virtual screening |
+| `ecfp6` | Morgan (radius=3) | 2048 | More specific substructures |
+| `fcfp4` | Feature Morgan (radius=2) | 2048 | Pharmacophore-based |
+| `maccs` | MACCS Keys | 167 (fixed) | Structural keys, scaffold analysis |
+| `rdkit` | Daylight-style RDKit | 2048 | General purpose |
+| `atompair` | Atom Pair | 2048 | 3D-aware searches |
+| `torsion` | Topological Torsion | 2048 | Conformer-sensitive searches |
+
+## Python API
+
+```python
+from chemlitmus import compute_fingerprint
+
+# Single fingerprint
+fp = compute_fingerprint("CC(=O)OC1=CC=CC=C1C(=O)O", fp_type="ecfp4")
+print(f"Type: {fp.fingerprint_type}, On bits: {fp.n_on_bits}, Density: {fp.density:.4f}")
+print(f"Bit string: {fp.bit_string}")
+
+# All fingerprint types
+fps = compute_fingerprint("CCO", fp_type="all")
+for fp in fps:
+    print(f"{fp.fingerprint_type:12s}: {fp.n_on_bits} bits on / {fp.n_bits}")
+```
+
+---
+
+# 7. Similarity Search
+
+Search a compound library to find structurally similar compounds using Tanimoto similarity.
+
+## CLI
+
+```bash
+# Search against a library file, default threshold 0.5, top 10
+chemlitmus similar "CC(=O)OC1=CC=CC=C1C(=O)O" --file library.smi
+
+# Custom threshold and top-N
+chemlitmus similar "CC(=O)OC1=CC=CC=C1C(=O)O" --file library.csv --threshold 0.3 --top 20
+
+# Use MACCS fingerprints instead of ECFP4
+chemlitmus similar "CCO" --file compounds.smi --fp-type maccs --top 5
+
+# Save results to CSV
+chemlitmus similar "CC(=O)OC1=CC=CC=C1C(=O)O" --file library.smi --output hits.csv
+
+# Higher bit resolution
+chemlitmus similar "CCO" --file library.smi --fp-type ecfp6 --bits 4096 --top 10
+```
+
+## Python API
+
+```python
+from chemlitmus import compute_similarity
+
+# Library as list of SMILES
+library = ["CCO", "CCCO", "CC(=O)OC1=CC=CC=C1C(=O)O", "c1ccccc1", "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"]
+
+hits = compute_similarity(
+    query_smiles="CC(=O)OC1=CC=CC=C1C(=O)O",
+    library=library,
+    fp_type="ecfp4",
+    threshold=0.1,
+    top_n=5,
+)
+
+for hit in hits:
+    print(f"Rank {hit.rank}: {hit.hit} (Tanimoto={hit.similarity:.4f})")
+```
+
+---
+
+
+---
+
+# 8. Substructure Search
+
+Search a compound library for molecules that contain a specific substructural fragment or functional group. This is highly useful for identifying compounds with a required pharmacophore or structural alert.
+
+## CLI
+
+```bash
+# Search using a SMARTS query (default). This searches for a carboxylic acid.
+chemlitmus substructure "C(=O)[OH]" --file library.csv
+
+# Search using a SMILES query (e.g. benzene ring)
+chemlitmus substructure "c1ccccc1" --file compounds.smi --smiles-query
+
+# Save only the matching compounds to a new CSV file
+chemlitmus substructure "[#9,#17,#35,#53]" --file library.csv --output halogens_only.csv
+```
+
+## Python API
+
+```python
+from chemlitmus import substructure_search
+
+library = [
+    "CCO", 
+    "CC(=O)OC1=CC=CC=C1C(=O)O", 
+    "c1ccccc1", 
+    "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"
+]
+
+# Query for carboxylic acid using SMARTS
+hits = substructure_search("C(=O)[OH]", library, is_smarts=True)
+
+print(f"Found {len(hits)} matches:")
+for hit in hits:
+    print(f"- {hit.smiles} (Atoms matched: {hit.match_indices})")
+```
+
+# 9. Drug-Likeness Filtering (ADMET)
+
+Evaluate compounds against standard drug-likeness rules and PAINS alerts.
+
+## CLI
+
+```bash
+# Single compound - all rules (default)
+chemlitmus filter "CC(=O)OC1=CC=CC=C1C(=O)O"
+
+# Specific rules only
+chemlitmus filter "CC(=O)OC1=CC=CC=C1C(=O)O" --rules lipinski,veber,pains
+
+# Batch: keep only compounds that pass all rules
+chemlitmus filter --file compounds.csv --rules lipinski --output drug_like.csv
+
+# Batch: keep only PAINS-free compounds (--rules pains keeps clean ones)
+chemlitmus filter --file compounds.csv --rules pains --output no_pains.csv
+
+# Batch: keep only PAINS-flagged compounds for investigation (--fail inverts)
+chemlitmus filter --file compounds.csv --rules pains --fail --output pains_hits.csv
+
+# Add QED minimum threshold
+chemlitmus filter --file compounds.csv --rules lipinski,veber --qed-min 0.5 --output output.csv
+```
+
+**Available filter rules:**
+
+| Rule | Criteria | Use Case |
+|------|----------|----------|
+| `lipinski` | MW<=500, LogP<=5, HBD<=5, HBA<=10 | Oral drug candidates |
+| `veber` | RotBonds<=10, TPSA<=140 A^2 | Oral bioavailability |
+| `ghose` | MW 160-480, LogP -0.4 to 5.6, Atoms 20-70, MR 40-130 | Drug-like space |
+| `egan` | TPSA<=131.6, LogP<=5.88 | Passive permeability |
+| `ro3` | MW<=300, LogP<=3, HBD<=3, HBA<=3 | Lead-like fragments |
+| `pains` | RDKit PAINS catalog | Frequent hitter detection |
+| `qed` | 0-1 score (info only) | Overall drug-likeness score |
+
+## Python API
+
+```python
+from chemlitmus import apply_filters
+
+# All rules at once
+result = apply_filters("CC(=O)OC1=CC=CC=C1C(=O)O")
+
+print(f"MW:  {result.molecular_weight:.2f} g/mol")
+print(f"LogP: {result.logp:.2f}")
+print(f"QED:  {result.qed_score:.4f}")
+print(f"Lipinski: {'PASS' if result.lipinski.passed else 'FAIL'} — {result.lipinski.details}")
+print(f"PAINS:    {'PASS' if result.pains.passed else 'FAIL'} — {result.pains.details}")
+print(f"Overall:  {'PASS' if result.passes_all else 'FAIL'}")
+
+# Specific rules only
+result = apply_filters("CC(=O)OC1=CC=CC=C1C(=O)O", rules=["lipinski", "pains"])
+
+# Batch filtering
+import csv
+
+library = ["CC(=O)OC1=CC=CC=C1C(=O)O", "CN1C=NC2=C1C(=O)N(C(=O)N2C)C", "c1ccccc1"]
+passing = [smi for smi in library if apply_filters(smi, rules=["lipinski"]).passes_all]
+print(f"Drug-like compounds: {len(passing)}/{len(library)}")
+```
+
+---
+
+# 10. Standardization Pipeline
+
+Clean up "dirty" SMILES from databases using RDKit's MolStandardize:
+
+```bash
+# Single compound: strip salts, neutralize, canonicalize tautomers
+chemlitmus standardize "[Na+].[OH-].CC(=O)[O-]"
+# Output: CC(=O)O
+
+# Show exactly what each step changed
+chemlitmus standardize "[Na+].[OH-].CC(=O)[O-]" --show-diff
+
+# Apply only specific steps
+chemlitmus standardize "O=C([O-])c1ccccc1" --steps neutralize,canonical
+
+# Batch process a CSV file
+chemlitmus standardize --file compounds.csv --output standardized.csv --show-diff
+```
+
+**Available steps** (applied in order):
+
+| Step | Description |
+|------|-------------|
+| `fragment` | Salt stripping — keeps the largest organic fragment |
+| `neutralize` | Neutralizes charged atoms (e.g., carboxylate → carboxylic acid) |
+| `tautomer` | Canonicalize tautomers to a single stable form |
+| `canonical` | Generate canonical RDKit SMILES string |
+
+### Python API
+
+```python
+from chemlitmus import standardize_smiles
+
+result = standardize_smiles("[Na+].[OH-].CC(=O)[O-]")
+print(result.output_smiles)   # CC(=O)O
+print(result.changed)         # True
+
+# Inspect per-step changes
+for step in result.step_results:
+    if step.changed:
+        print(f"{step.step}: {step.input_smiles} -> {step.output_smiles}")
+
+# Custom pipeline
+result = standardize_smiles("O=C([O-])c1ccccc1", steps=["neutralize", "canonical"])
+```
+
+---
+
+
+---
+
+# 11. Tautomer Enumeration
+
+Different tautomers of a single molecule can exhibit vastly different binding affinities to a target protein. Enumerating plausible tautomeric states is a critical preparation step for structure-based virtual screening and molecular docking.
+
+## CLI
+
+```bash
+# Single compound
+chemlitmus tautomers "Oc1nc(O)c2nc[nH]c2n1"
+
+# Restrict the maximum number of tautomers generated
+chemlitmus tautomers "Oc1nc(O)c2nc[nH]c2n1" --max 50
+
+# Batch process a CSV file
+# NOTE: The output CSV will "explode" the dataset, meaning if an input SMILES 
+# produces 15 tautomers, the output CSV will contain 15 rows for that input.
+chemlitmus tautomers --file ligands.csv --output all_tautomers.csv
+```
+
+## Python API
+
+```python
+from chemlitmus import enumerate_tautomers
+
+# Enumerate tautomers
+result = enumerate_tautomers("Oc1nc(O)c2nc[nH]c2n1", max_tautomers=100)
+
+if result.success:
+    print(f"Generated {result.num_tautomers} tautomers.")
+    print(f"Canonical tautomer: {result.canonical_tautomer}")
+    
+    # Iterate through them
+    for t_smi in result.tautomers:
+        is_canonical = (t_smi == result.canonical_tautomer)
+        print(f"{t_smi} (Canonical: {is_canonical})")
+else:
+    print(f"Error: {result.error}")
+```
+
+# 12. IUPAC Identifier Generation
+
+Generate systematic identifiers from SMILES, fully offline.
+
+```bash
+# Offline: InChI, InChIKey, Formula, MW
+chemlitmus iupacname "CC(=O)OC1=CC=CC=C1C(=O)O"
+
+# With IUPAC preferred name (fetched from PubChem on first use, then cached offline)
+chemlitmus iupacname "CCO" --online
+
+# Batch processing
+chemlitmus iupacname --file compounds.smi --online --output identifiers.csv
+```
+
+| Output | Source | Requires Network? |
+|--------|--------|-------------------|
+| Canonical SMILES | RDKit | No |
+| Molecular Formula | RDKit | No |
+| Exact MW | RDKit | No |
+| InChI | RDKit | No |
+| InChIKey | RDKit | No |
+| IUPAC Name | PubChem (cached) | First time only |
+
+### Python API
+
+```python
+from chemlitmus import get_iupac_name
+
+# Fully offline — InChI, formula, MW
+result = get_iupac_name("CCO")
+print(result.inchi)        # InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3
+print(result.inchikey)     # LFQSCWFLJHTTHZ-UHFFFAOYSA-N
+print(result.molecular_formula)  # C2H6O
+print(result.molecular_weight)   # 46.0419
+
+# Fetch IUPAC name (network on first call, cache thereafter)
+result = get_iupac_name("CCO", use_online=True)
+print(result.iupac_name)   # ethanol
+print(result.iupac_name_source)  # pubchem (or 'cache' on repeat calls)
+```
+
+
+---
+
+# 13. Advanced Cheminformatics
+
+## 13.1 Reaction SMILES Validation
+Validate Reaction SMILES (SMIRKS) syntax, confirming the number of reactants, agents (catalysts), and products.
+```bash
+chemlitmus reaction "CC(=O)O.OCC>>CC(=O)OCC.O"
+```
+
+## 13.2 Multiple Conformer Generation
+Generate multiple optimized 3D conformers using the ETKDG algorithm. The output must be saved as a multi-model `.sdf` file, ready for 3D virtual screening.
+```bash
+chemlitmus conformers "CCO" --num-conformers 100 --output out.sdf
+```
+
+## 13.3 Murcko Scaffold Extraction
+Remove side chains and extract the core ring framework. Highly useful for clustering High-Throughput Screening (HTS) hits.
+```bash
+# Single
+chemlitmus scaffold "CC(=O)OC1=CC=CC=C1C(=O)O"
+
+# Batch
+chemlitmus scaffold --file hits.csv --output scaffolds.csv
+```
+
+## 13.4 Stereochemistry Analysis
+Identify stereocenters (R/S) and unassigned chiral atoms (`?`). Use `--chiral-flag` to return a system error code if unassigned stereochemistry is detected (useful for strict CI pipelines).
+```bash
+chemlitmus stereo "C[C@H](O)CC" --chiral-flag
+```
+
+
+## 13.5 R-Group Decomposition
+Decompose a library of molecules against a core SMARTS scaffold.
+```bash
+chemlitmus rgroup --core "c1ccccc1" --smiles "Cc1ccccc1,c1ccccc1F"
+```
+
+## 13.6 SMILES Augmentation
+Generate a set of unique uncanonical SMILES representing the same molecule, highly useful for deep learning model augmentation.
+```bash
+chemlitmus augment "CC(=O)OC1=CC=CC=C1C(=O)O" --num 10
+```
+
+## 13.7 Atom Mapping
+Assign map indices to every atom, useful for reaction tracking and graph networks.
+```bash
+chemlitmus atommap "CCO"
+```

@@ -1,0 +1,27 @@
+site_name: ChemLitmus
+site_url: https://chemlitmus.readthedocs.io
+repo_url: https://github.com/AtharvaTilewale/ChemLitmus
+site_description: High-performance SMILES validation and PubChem lookup.
+
+theme:
+  name: material
+  logo: assets/chemlitmus-icon.png
+  favicon: assets/chemlitmus-icon.png
+  features:
+    - navigation.tabs
+    - navigation.top
+    - search.suggest
+    - search.highlight
+  palette:
+    # Provides a sleek dark-mode by default
+    scheme: slate
+    primary: indigo
+    accent: blue
+
+nav:
+  - Home: index.md
+  - Practical Guide: practical_guide.md
+  - API Reference: api_reference.md
+  - Configuration: configuration.md
+  - Changelog: changelog.md
+  - Contributing: contributing.md
