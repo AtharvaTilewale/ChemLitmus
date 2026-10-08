@@ -1,9 +1,10 @@
 """SMARTS catalogue quality control commands."""
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 import typer
 from rich.table import Table
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.panel import Panel
 from rich.text import Text
 from rich.markup import escape
@@ -13,6 +14,8 @@ from chemlitmus import (
     SmartsAuditResult, SmartsExplanation,
 )
 from chemlitmus.cli._app import app, console
+from rdkit import Chem
+from chemlitmus.core.smartsaudit import AUDIT_CHECKS
 
 
 def _print_audit_summary(res: SmartsAuditResult, breadth_threshold: float) -> None:
@@ -40,6 +43,10 @@ def _print_audit_summary(res: SmartsAuditResult, breadth_threshold: float) -> No
         t.add_row("Exact duplicates", str(res.n_duplicates), pct(res.n_duplicates), "Identical SMARTS string appears earlier")
         t.add_row("Library-equivalent", str(res.n_equivalent), pct(res.n_equivalent), "Identical hit set to another pattern")
         t.add_row("Strictly subsumed", str(res.n_subsumed), pct(res.n_subsumed), "Another pattern's hits contain all of these")
+    if "proof" in res.checks_run:
+        t.add_row("Proven redundant", str(res.n_proven_redundant), pct(res.n_proven_redundant), "Static proof: another pattern contains it, for every molecule")
+        t.add_row("Proof undecided", str(res.n_proof_undecided), pct(res.n_proof_undecided), "No witness found — not refuted")
+        t.add_row("Not provable", str(res.n_proof_not_analysable), pct(res.n_proof_not_analysable), "Recursive SMARTS, isotope, valence, ring size, disconnected")
     if res.sensitivity is not None:
         t.add_row("Preparation-sensitive", str(res.sensitivity.n_sensitive_patterns), pct(res.sensitivity.n_sensitive_patterns),
                   "Hit count changes with molecule preparation")
@@ -95,7 +102,7 @@ def smartsaudit_cmd(
     patterns: Optional[Path] = typer.Argument(None, help="Pattern file: CSV/TSV/XLSX with a 'smarts' column, or a text file with one SMARTS per line."),
     explain: Optional[str] = typer.Option(None, "--explain", "-e", help="Explain a single SMARTS instead of auditing a file."),
     library: Optional[Path] = typer.Option(None, "--library", "-l", help="Reference molecules (.smi/.csv/.sdf). Default: bundled ChEMBL-derived set."),
-    checks: str = typer.Option("all", "--checks", "-c", help="Comma-separated subset of: compile,breadth,dead,redundancy,sensitivity (or all)."),
+    checks: str = typer.Option("all", "--checks", "-c", help="Comma-separated subset of: compile,breadth,dead,redundancy,sensitivity,proof (or all; proof is opt-in, e.g. all,proof)."),
     breadth_threshold: float = typer.Option(0.10, "--breadth-threshold", help="Flag patterns matching more than this fraction of the reference set."),
     max_molecules: Optional[int] = typer.Option(None, "--max-molecules", help="Use only the first N reference molecules."),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Write the per-pattern audit table to CSV."),
@@ -142,7 +149,11 @@ def smartsaudit_cmd(
         console.print("[red]Error:[/red] No patterns found in file.")
         raise typer.Exit(code=1)
 
-    check_list = None if checks.strip().lower() == "all" else [c for c in checks.split(",") if c.strip()]
+    check_list = None if checks.strip().lower() == "all" else [c.strip().lower() for c in checks.split(",") if c.strip()]
+    if check_list and any(c not in AUDIT_CHECKS and c != "all" for c in check_list):
+        bad = [c for c in check_list if c not in AUDIT_CHECKS and c != "all"]
+        console.print(f"[red]Error:[/red] Unknown check(s) {bad}. Valid: {', '.join(AUDIT_CHECKS)} or all.")
+        raise typer.Exit(code=1)
     with console.status(f"[bold green]Auditing {len(triples)} patterns against {len(mols):,} molecules...[/bold green]"):
         try:
             res = audit_smarts(triples, library=mols, library_source=source, checks=check_list,
@@ -277,4 +288,120 @@ def smartsdiff_cmd(
         json_out.parent.mkdir(parents=True, exist_ok=True)
         json_out.write_text(json.dumps(res.model_dump(), indent=2))
         console.print(f"[green]Saved:[/green] {json_out}")
+    raise typer.Exit(code=0)
+
+
+@app.command(name="smartsproof")
+def smartsproof_cmd(
+    patterns: Optional[Path] = typer.Argument(None, help="Pattern file to prove redundancy within (CSV/TSV/XLSX with a 'smarts' column, or one SMARTS per line)."),
+    subsumes_pair: Optional[Tuple[str, str]] = typer.Option(None, "--subsumes", help="A B: prove that every molecule matched by A is matched by B.", metavar="A B"),
+    equivalent_pair: Optional[Tuple[str, str]] = typer.Option(None, "--equivalent", help="A B: prove that A and B match exactly the same molecules.", metavar="A B"),
+    satisfiable_smarts: Optional[str] = typer.Option(None, "--satisfiable", help="Check whether any atom/bond state can satisfy every expression in the pattern."),
+    max_container_atoms: int = typer.Option(40, "--max-container-atoms", help="Skip containers larger than this (reported as undecided)."),
+    step_budget: int = typer.Option(200000, "--step-budget", help="Backtracking steps per pattern pair before giving up (undecided)."),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Catalogue mode: per-pattern table as CSV."),
+    json_out: Optional[Path] = typer.Option(None, "--json", help="Full result as JSON."),
+    show: int = typer.Option(15, "--show", help="Catalogue mode: proven-redundant patterns to list."),
+) -> None:
+    """Prove SMARTS containment statically — no reference molecules needed.
+
+    A proof is an injective atom mapping (the witness) under which every atom and bond expression
+    of the broader pattern is implied by the one it maps onto; implication is decided exactly over
+    a finite universe of atom states. A witness proves containment for every molecule. No witness
+    proves nothing: the pair is undecided. Recursive SMARTS, isotopes, valence and ring-size
+    primitives are outside the universe and reported as not analysable.
+    """
+    import csv
+    import json
+
+    from chemlitmus.core.smartsproof import equivalent, prove_catalogue, satisfiable, subsumes
+
+    modes = sum(x is not None for x in (patterns, subsumes_pair, equivalent_pair, satisfiable_smarts))
+    if modes != 1:
+        console.print("[red]Error:[/red] Give exactly one of: a pattern file, --subsumes A B, --equivalent A B, --satisfiable S.")
+        raise typer.Exit(code=1)
+
+    def _witness_str(w, a_sm, b_sm):
+        if not w:
+            return ""
+        return ", ".join(f"B[{k}]→A[{v}]" for k, v in sorted(w.items()))
+
+    if subsumes_pair or equivalent_pair:
+        a, b = subsumes_pair or equivalent_pair
+        for sm in (a, b):
+            if Chem.MolFromSmarts(sm) is None:
+                console.print(f"[red]Error:[/red] Invalid SMARTS: {escape(sm)}")
+                raise typer.Exit(code=1)
+        r = subsumes(a, b) if subsumes_pair else equivalent(a, b)
+        rel = "⊆" if subsumes_pair else "≡"
+        colour = "green" if r.proven else ("yellow" if r.status.startswith("no witness") or r.status.startswith("budget") else "red")
+        console.print(f"[bold]A[/bold] = {escape(a)}\n[bold]B[/bold] = {escape(b)}")
+        console.print(f"[{colour}]A {rel} B: {r.status}[/{colour}]  [dim](atom universe: {r.universe_size:,} states)[/dim]")
+        if r.witness:
+            console.print(f"  Witness A ⊆ B: {_witness_str(r.witness, a, b)}  [dim](B atom → A atom)[/dim]")
+        if equivalent_pair and r.witness_reverse:
+            console.print(f"  Witness B ⊆ A: {', '.join(f'A[{k}]→B[{v}]' for k, v in sorted(r.witness_reverse.items()))}")
+        if not r.proven and not r.status.startswith("not analysable"):
+            console.print("  [dim]No witness is not a refutation: the containment may hold but is not provable by this method.[/dim]")
+        if json_out:
+            json_out.write_text(json.dumps(r.model_dump(), indent=2)); console.print(f"[green]Saved:[/green] {json_out}")
+        raise typer.Exit(code=0 if r.proven else 1)
+
+    if satisfiable_smarts:
+        if Chem.MolFromSmarts(satisfiable_smarts) is None:
+            console.print(f"[red]Error:[/red] Invalid SMARTS: {escape(satisfiable_smarts)}")
+            raise typer.Exit(code=1)
+        r = satisfiable(satisfiable_smarts)
+        colour = {"satisfiable at atom and bond level": "green", "unsatisfiable": "red"}.get(r.status, "yellow")
+        console.print(f"{escape(satisfiable_smarts)}: [{colour}]{r.status}[/{colour}]")
+        if r.atom_index is not None:
+            console.print(f"  Atom {r.atom_index} ({escape(r.atom_expression or '')}) matches no atom state.")
+        if json_out:
+            json_out.write_text(json.dumps(r.model_dump(), indent=2)); console.print(f"[green]Saved:[/green] {json_out}")
+        raise typer.Exit(code=0 if r.satisfiable else 1)
+
+    triples = load_patterns(patterns)
+    if not triples:
+        console.print("[red]Error:[/red] No patterns found.")
+        raise typer.Exit(code=1)
+    labels = [(sm, name or f"#{i}") for i, (sm, name, _) in enumerate(triples)]
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), BarColumn(), TaskProgressColumn(), console=console) as progress:
+        task = progress.add_task("Proving...", total=len(labels))
+        res = prove_catalogue(labels, max_container_atoms=max_container_atoms, step_budget=step_budget,
+                              progress_callback=lambda n, total: progress.update(task, completed=n))
+
+    n = res.n_patterns or 1
+    t1 = Table(title="[bold]Static containment proofs[/bold]", show_header=True, header_style="bold magenta")
+    t1.add_column("Outcome", style="cyan"); t1.add_column("Patterns", justify="right"); t1.add_column("Share", justify="right"); t1.add_column("Meaning")
+    t1.add_row("Proven redundant", str(res.n_proven_redundant), f"{res.n_proven_redundant / n:.1%}", "Another catalogue pattern provably contains it (lower bound)")
+    t1.add_row("  of which proven equivalent", str(res.n_proven_equivalent), f"{res.n_proven_equivalent / n:.1%}", "Containment proven both ways")
+    t1.add_row("Undecided", str(res.n_no_witness), f"{res.n_no_witness / n:.1%}", "No witness found — not refuted")
+    t1.add_row("Unsatisfiable", str(res.n_unsatisfiable), f"{res.n_unsatisfiable / n:.1%}", "An atom expression matches no atom state")
+    t1.add_row("Not analysable", str(res.n_not_analysable), f"{res.n_not_analysable / n:.1%}", escape("; ".join(f"{k} ×{v}" for k, v in sorted(res.not_analysable_reasons.items(), key=lambda kv: -kv[1]))))
+    console.print(t1)
+    console.print(f"  {res.n_patterns} patterns · atom universe {res.universe_size:,} states · {res.n_pairs_tested:,} candidate pairs tested · {res.n_pairs_budget_exceeded} over budget")
+
+    shown = [p for p in res.patterns if p.status in ("proven redundant", "proven equivalent")][:show]
+    if shown:
+        t2 = Table(title=f"Proven redundant (first {len(shown)})", show_header=True, header_style="bold yellow")
+        t2.add_column("Pattern", style="cyan", overflow="fold", min_width=16); t2.add_column("SMARTS", overflow="fold", max_width=40)
+        t2.add_column("Contained in", overflow="fold", min_width=16); t2.add_column("Witness", overflow="fold")
+        for p in shown:
+            t2.add_row(escape(p.name or ""), escape(p.smarts), escape(", ".join(p.proven_subsumed_by[:3]) + (" …" if len(p.proven_subsumed_by) > 3 else "")),
+                       escape(", ".join(f"{k}→{v}" for k, v in sorted((p.witness or {}).items()))))
+        console.print(t2)
+        console.print("  [dim]Witness: container atom → pattern atom. Redundancy within one catalogue is a defect; across catalogues it is provenance.[/dim]")
+
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with open(output, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["index", "name", "smarts", "status", "reason", "proven_subsumed_by", "proven_equivalent_to", "witness", "n_undecided_pairs", "n_budget_exceeded"])
+            for p in res.patterns:
+                w.writerow([p.index, p.name or "", p.smarts, p.status, p.reason or "", ";".join(p.proven_subsumed_by), ";".join(p.proven_equivalent_to),
+                            ";".join(f"{k}>{v}" for k, v in sorted((p.witness or {}).items())), p.n_undecided_pairs, p.n_budget_exceeded])
+        console.print(f"[green]Saved:[/green] {output}")
+    if json_out:
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        json_out.write_text(json.dumps(res.model_dump(), indent=2)); console.print(f"[green]Saved:[/green] {json_out}")
     raise typer.Exit(code=0)

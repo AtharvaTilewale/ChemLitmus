@@ -68,6 +68,7 @@ nav:
       - Molecular identity: concepts/molecular-identity.md
       - Molecule preparation: concepts/molecule-preparation.md
       - SMARTS auditing: concepts/smarts-auditing.md
+      - SMARTS containment proofs: concepts/smarts-proofs.md
       - SMILES diagnosis: concepts/smiles-diagnosis.md
   - Project:
       - Changelog: project/changelog.md

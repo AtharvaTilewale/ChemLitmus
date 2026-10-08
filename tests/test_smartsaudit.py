@@ -64,7 +64,7 @@ def by_name(res: SmartsAuditResult, name: str):
 # --------------------------------------------------------------------------- audit
 
 def test_constants():
-    assert AUDIT_CHECKS == ["compile", "breadth", "dead", "redundancy", "sensitivity"]
+    assert AUDIT_CHECKS == ["compile", "breadth", "dead", "redundancy", "sensitivity", "proof"]
     assert PREPARATIONS == ["implicit-h", "explicit-h", "kekule"]
 
 
@@ -72,7 +72,7 @@ def test_shape_and_bookkeeping(result):
     assert result.n_patterns == len(PATTERNS)
     assert result.n_molecules == N
     assert result.library_source == "inline"
-    assert result.checks_run == AUDIT_CHECKS
+    assert result.checks_run == ["compile", "breadth", "dead", "redundancy", "sensitivity"]   # proof is opt-in
     assert result.error is None
     assert result.elapsed_seconds >= 0
 

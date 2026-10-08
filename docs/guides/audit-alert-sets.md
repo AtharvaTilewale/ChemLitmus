@@ -105,6 +105,22 @@ chemlitmus smartsaudit alerts.csv --library my_library.smi
 
 Every empirical verdict — breadth, dead, equivalence, subsumption, sensitivity — is then relative to *your* molecules, which is usually what you want.
 
+## Prove redundancy instead of measuring it
+
+`smartsaudit`'s `subsumed_by` is empirical. Add the static prover to the audit, or run it alone:
+
+```bash
+chemlitmus smartsaudit alerts.csv --checks all,proof -o audit.csv   # adds proven_subsumed_by / proof_status
+chemlitmus smartsproof alerts.csv -o proofs.csv                      # proofs only, no library needed
+chemlitmus smartsproof --subsumes '[Cl][CX4]' '[#6][Cl]'             # one pair, with the witness
+chemlitmus smartsproof --satisfiable '[R0;x2]'                       # can this ever match?
+```
+
+A proof holds for every molecule and comes with a checkable witness; *no witness* is undecided,
+never a refutation. See [Static SMARTS containment proofs](../concepts/smarts-proofs.md) for
+the method, its limits, and the result on the ChEMBL alert collection (395 of 1,251 alerts
+provably redundant, 216 not analysable).
+
 ## Compare two versions of a catalogue
 
 A catalogue changes — a new release, a vendor's re-implementation, your own clean-up after an
@@ -184,4 +200,12 @@ from chemlitmus import diff_smarts
 res = diff_smarts("alerts_v1.csv", "alerts_v2.csv")
 res.verdict_changes, res.semantic_counts
 [d for d in res.patterns if d.semantic_status == "narrowed"][0].examples_lost
+```
+
+```python
+from chemlitmus import subsumes, equivalent, satisfiable, prove_catalogue
+subsumes("c1ccccc1[OH]", "c[OH]").proven          # True, with .witness
+equivalent("[CH3]", "[C;H3]").proven               # True
+satisfiable("[R0;x2]").status                      # 'unsatisfiable'
+prove_catalogue([(smarts, name), ...]).n_proven_redundant
 ```

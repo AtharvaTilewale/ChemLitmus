@@ -125,6 +125,14 @@ Copy of `mol` as `implicit-h` (unchanged), `explicit-h` (`AddHs`) or `kekule` (K
 
 ---
 
+### `subsumes(a, b) -> ProofResult` · `equivalent(a, b) -> ProofResult` · `satisfiable(smarts) -> SatisfiabilityResult`
+
+Static proofs. `ProofResult`: `relation, a, b, status ('proven' | 'no witness' | 'budget exceeded' | 'not analysable: …'), proven, witness (B atom → A atom), witness_reverse, status_reverse, universe_size`. `SatisfiabilityResult`: `smarts, status, satisfiable, atom_index, atom_expression, universe_size`.
+
+### `prove_catalogue(patterns, max_container_atoms=40, step_budget=200000, progress_callback=None) -> CatalogueProof`
+
+`patterns` is a list of `(smarts, name)`. `CatalogueProof`: `n_patterns, universe_size, universe_domains, n_analysable, n_not_analysable, not_analysable_reasons, n_unsatisfiable, n_proven_redundant, n_proven_equivalent, n_no_witness, n_pairs_tested, n_pairs_budget_exceeded, patterns: list[PatternProof]`; `PatternProof`: `index, name, smarts, status, reason, proven_subsumed_by, proven_equivalent_to, witness, n_undecided_pairs, n_budget_exceeded`. `audit_smarts(..., checks=[..., "proof"])` fills `proven_subsumed_by`, `proven_equivalent_to`, `proof_status`, `proof_reason` on each `PatternAudit`.
+
 ### `diff_smarts(source_a, source_b, library=None, preparation='implicit-h', max_molecules=None, n_examples=3) -> SmartsDiffResult`
 
 Semantic diff of two catalogues. Sources are pattern files or `rdkit:<NAME>` (`RDKIT_CATALOGS`). `SmartsDiffResult`: `source_a, source_b, library_source, n_molecules, preparation, n_patterns_a, n_patterns_b, n_paired, paired_by, text_counts, semantic_counts, flagged_a, flagged_b, flagged_both, flagged_only_a, flagged_only_b, verdict_changes, verdict_change_fraction, patterns: list[PatternDiff]`. `PatternDiff`: `key, paired_by, a, b (PatternSide: name, smarts, rule_set, parses, n_hits), text_status, semantic_status, hits_a, hits_b, gained, lost, jaccard, examples_gained, examples_lost`.

@@ -70,6 +70,7 @@ from chemlitmus.core.smartsaudit import (
     load_reference_library,
     prepare_molecule,
 )
+from chemlitmus.core.smartsproof import CatalogueProof, PatternProof, ProofResult, SatisfiabilityResult, equivalent, prove_catalogue, satisfiable, subsumes
 from chemlitmus.core.smartsdiff import PatternDiff, RDKIT_CATALOGS, SmartsDiffResult, diff_smarts
 from chemlitmus.providers import (
     PROVIDERS,
@@ -207,6 +208,15 @@ def download_structure(
     return client.download_structure(cid, format, dimension, output_dir, force)
 
 __all__ = [
+    # SMARTS containment proofs
+    "subsumes",
+    "equivalent",
+    "satisfiable",
+    "prove_catalogue",
+    "ProofResult",
+    "SatisfiabilityResult",
+    "PatternProof",
+    "CatalogueProof",
     # SMARTS catalogue diff
     "diff_smarts",
     "SmartsDiffResult",

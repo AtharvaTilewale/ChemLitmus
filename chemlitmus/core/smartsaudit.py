@@ -45,8 +45,9 @@ except ImportError:  # pragma: no cover
 PREPARATIONS: List[str] = ["implicit-h", "explicit-h", "kekule"]
 """Molecule preparations recognised by the audit and by ``--prep`` on other commands."""
 
-AUDIT_CHECKS: List[str] = ["compile", "breadth", "dead", "redundancy", "sensitivity"]
-"""Audit checks, in the order they run."""
+AUDIT_CHECKS: List[str] = ["compile", "breadth", "dead", "redundancy", "sensitivity", "proof"]
+"""Audit checks, in the order they run. ``proof`` (static containment proofs, see
+:mod:`chemlitmus.core.smartsproof`) is opt-in: it is not part of ``all``."""
 
 DEFAULT_BREADTH_THRESHOLD = 0.10
 """A pattern matching more than this fraction of the reference set is flagged over-broad."""
@@ -94,6 +95,10 @@ class PatternAudit(BaseModel):
     duplicate_of: Optional[int] = Field(None, description="Index of an earlier pattern with the identical SMARTS string.")
     equivalent_to: List[int] = Field(default_factory=list, description="Other patterns with an identical hit set on the reference library.")
     subsumed_by: Optional[int] = Field(None, description="Index of a pattern whose hit set strictly contains this one's.")
+    proven_subsumed_by: List[int] = Field(default_factory=list, description="Indices of patterns *proven* to contain this one (every molecule it matches, they match). Static proof; independent of the library.")
+    proven_equivalent_to: List[int] = Field(default_factory=list, description="Indices of patterns proven to match exactly the same molecules.")
+    proof_status: Optional[str] = Field(None, description="proven redundant | proven equivalent | no witness (undecided) | not analysable | unsatisfiable; None when the proof check did not run.")
+    proof_reason: Optional[str] = None
 
     # sensitivity
     hits_by_preparation: Dict[str, int] = Field(default_factory=dict)
@@ -116,6 +121,10 @@ class PatternAudit(BaseModel):
             out.append("equivalent")
         if self.subsumed_by is not None:
             out.append("subsumed")
+        if self.proof_status in ("proven redundant", "proven equivalent"):
+            out.append("proven-redundant")
+        elif self.proof_status == "unsatisfiable":
+            out.append("unsatisfiable")
         if self.preparation_sensitive:
             out.append("prep-sensitive")
         return out
@@ -183,6 +192,18 @@ class SmartsAuditResult(BaseModel):
         return sum(1 for p in self.patterns if p.subsumed_by is not None)
 
     @property
+    def n_proven_redundant(self) -> int:
+        return sum(1 for p in self.patterns if p.proof_status in ("proven redundant", "proven equivalent"))
+
+    @property
+    def n_proof_undecided(self) -> int:
+        return sum(1 for p in self.patterns if p.proof_status == "no witness")
+
+    @property
+    def n_proof_not_analysable(self) -> int:
+        return sum(1 for p in self.patterns if p.proof_status == "not analysable")
+
+    @property
     def n_needs_explicit_h(self) -> int:
         return sum(1 for p in self.patterns if p.requires_explicit_h)
 
@@ -213,6 +234,9 @@ class SmartsAuditResult(BaseModel):
                 "duplicate_of": p.duplicate_of if p.duplicate_of is not None else "",
                 "equivalent_to": ";".join(map(str, p.equivalent_to)),
                 "subsumed_by": p.subsumed_by if p.subsumed_by is not None else "",
+                "proven_subsumed_by": ";".join(map(str, p.proven_subsumed_by)),
+                "proven_equivalent_to": ";".join(map(str, p.proven_equivalent_to)),
+                "proof_status": p.proof_status or "",
                 "preparation_sensitive": p.preparation_sensitive,
                 "flags": ";".join(p.flags),
             }
@@ -483,7 +507,9 @@ def audit_smarts(
             breadth_threshold=breadth_threshold, patterns=[], error="RDKit is not installed.",
         )
 
-    requested = set(AUDIT_CHECKS) if checks is None else {c.strip().lower() for c in checks}
+    requested = set(AUDIT_CHECKS) - {"proof"} if checks is None else {c.strip().lower() for c in checks}
+    if "all" in requested:
+        requested = (requested - {"all"}) | (set(AUDIT_CHECKS) - {"proof"})
     bad = requested - set(AUDIT_CHECKS)
     if bad:
         raise ValueError(f"Unknown check(s): {sorted(bad)}. Valid: {AUDIT_CHECKS}")
@@ -643,6 +669,17 @@ def audit_smarts(
             summary = None
     else:
         summary = None
+
+    if "proof" in requested:
+        from chemlitmus.core.smartsproof import prove_catalogue
+
+        # label containers by index so they map back unambiguously (duplicate SMARTS exist)
+        proof = prove_catalogue([(rec.smarts, str(i)) for i, rec in enumerate(records)])
+        for rec, pp in zip(records, proof.patterns):
+            rec.proof_status = pp.status
+            rec.proof_reason = pp.reason
+            rec.proven_subsumed_by = sorted(int(s) for s in pp.proven_subsumed_by)
+            rec.proven_equivalent_to = sorted(int(s) for s in pp.proven_equivalent_to)
 
     return SmartsAuditResult(
         n_patterns=len(records),

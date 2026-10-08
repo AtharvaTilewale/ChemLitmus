@@ -62,6 +62,7 @@ Everything runs offline on RDKit except the explicitly network-backed database c
 | Decide whether two records are the same compound | [`identity`](reference/cli.md#identity) | yes |
 | Compare two compound collections | [`diff`](reference/cli.md#diff) | yes |
 | Audit a SMARTS / structural-alert set | [`smartsaudit`](reference/cli.md#smartsaudit) | yes |
+| Prove one alert redundant given another | [`smartsproof`](reference/cli.md#smartsproof) | yes |
 | Compare two alert catalogues by behaviour | [`smartsdiff`](reference/cli.md#smartsdiff) | yes |
 | Screen for drug-likeness and PAINS | [`filter`](reference/cli.md#filter) | yes |
 | Search by substructure or similarity | [`substructure`](reference/cli.md#substructure), [`similar`](reference/cli.md#similar) | yes |

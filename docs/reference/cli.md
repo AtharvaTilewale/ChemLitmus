@@ -142,7 +142,7 @@ chemlitmus smartsaudit [PATTERNS] [--explain SMARTS] [--library PATH] [--checks 
 | `PATTERNS` | CSV/TSV/XLSX with a `smarts` column (optional `description`/`name`, `rule_set_name`/`rule_set`), or text with one SMARTS per line |
 | `--explain`, `-e` | decompose a single SMARTS instead of auditing a file |
 | `--library`, `-l` | reference molecules; default is the bundled ChEMBL-derived set (9,272) |
-| `--checks`, `-c` | subset of `compile, breadth, dead, redundancy, sensitivity` (default all; `compile` always runs) |
+| `--checks`, `-c` | subset of `compile, breadth, dead, redundancy, sensitivity, proof` (default `all`, which excludes `proof`; use `all,proof` to add static proofs; `compile` always runs) |
 | `--breadth-threshold` | hit fraction above which a pattern is over-broad (default 0.10) |
 | `--max-molecules` | use only the first N reference molecules (faster, coarser) |
 | `--output`, `-o` | per-pattern table CSV |
@@ -152,6 +152,15 @@ chemlitmus smartsaudit [PATTERNS] [--explain SMARTS] [--library PATH] [--checks 
 Per-pattern CSV columns: `index, name, rule_set, smarts, parses, parse_error, n_query_atoms, requires_explicit_h, has_recursive_smarts, n_hits, hit_fraction, over_broad, never_fires, dead_verdict, never_matching_atoms, duplicate_of, equivalent_to, subsumed_by, preparation_sensitive, flags, hits_implicit-h, hits_explicit-h, hits_kekule`. See [Auditing alert sets](../guides/audit-alert-sets.md) and [SMARTS auditing](../concepts/smarts-auditing.md).
 
 ---
+
+### `smartsproof`
+
+```
+chemlitmus smartsproof PATTERNS [--max-container-atoms N] [--step-budget N] [--output PATH] [--json PATH] [--show N]
+chemlitmus smartsproof --subsumes A B | --equivalent A B | --satisfiable S  [--json PATH]
+```
+
+Static containment proofs, no reference library. Catalogue mode reports proven redundant / proven equivalent / undecided / unsatisfiable / not analysable per pattern, with the witness mapping. Pair modes exit 0 when proven, 1 otherwise. See [Static SMARTS containment proofs](../concepts/smarts-proofs.md).
 
 ### `smartsdiff`
 
