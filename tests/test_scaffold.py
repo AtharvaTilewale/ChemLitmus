@@ -1,5 +1,5 @@
 """Tests for chemlitmus.core.scaffold"""
-from chemlitmus.core.scaffold import extract_scaffold, ScaffoldResult
+from chemlitmus.core.scaffold import extract_scaffold
 
 def test_extract_scaffold_aspirin():
     result = extract_scaffold("CC(=O)OC1=CC=CC=C1C(=O)O")

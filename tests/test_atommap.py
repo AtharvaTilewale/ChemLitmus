@@ -1,5 +1,5 @@
 """Tests for chemlitmus.core.atommap"""
-from chemlitmus.core.atommap import map_atoms, AtomMapResult
+from chemlitmus.core.atommap import map_atoms
 
 def test_map_atoms_valid():
     result = map_atoms("CCO")

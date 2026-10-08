@@ -4,10 +4,8 @@ Tests for configuration module.
 Verifies that settings are loaded correctly and directories are created.
 """
 
-import os
 from pathlib import Path
 
-import pytest
 
 from chemlitmus.config import Settings, settings
 

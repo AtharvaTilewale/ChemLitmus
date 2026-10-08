@@ -13,17 +13,45 @@ except ImportError:
     RDKIT_AVAILABLE = False
 
 
+KNOWN_HEADERS = {
+    "smiles", "canonical_smiles", "isomeric_smiles", "structure", "compound", "compounds",
+    "molecule", "mol", "name", "names", "id", "ids", "cid", "query", "queries", "identifier",
+    "inchikey", "inchi_key", "chembl_id", "chebi_id", "kegg_id",
+}
+_PRIORITY = ["smiles", "canonical_smiles", "isomeric_smiles", "structure", "compound", "molecule",
+             "query", "identifier", "inchikey", "inchi_key", "name", "id", "cid"]
+
+
 def _detect_smiles_column(df: pd.DataFrame) -> str | int:
-    """Auto-detect the SMILES column in a DataFrame."""
-    common_names = ["smiles", "canonical_smiles", "structure", "compound"]
-    
-    # Check if any column header matches common names
-    for col in df.columns:
-        if str(col).lower().strip() in common_names:
-            return col
-            
-    # Fallback: Assume it's a headless CSV and the first column is SMILES
+    """Pick the column holding structures/queries: a recognised header name, else the first column."""
+    lowered = {str(c).lower().strip(): c for c in df.columns}
+    for name in _PRIORITY:
+        if name in lowered:
+            return lowered[name]
     return df.columns[0]
+
+
+def _has_header(first_row: list[str]) -> bool:
+    """Decide whether a delimited file's first row is a header.
+
+    A row is treated as a header only when at least one cell is a recognised header name.
+    Anything else -- a SMILES string, a compound name, a database identifier -- is data.
+    This keeps single-column lists of names or IDs intact (the first entry used to be eaten).
+    """
+    return any(str(c).lower().strip() in KNOWN_HEADERS for c in first_row)
+
+
+def _read_delimited(file_path: Path, sep: str) -> List[str]:
+    with open(file_path, encoding="utf-8-sig") as fh:
+        first = fh.readline()
+    cells = [c.strip().strip('"') for c in first.rstrip("\r\n").split(sep)] if first.strip() else []
+    if _has_header(cells):
+        df = pd.read_csv(file_path, sep=sep, dtype=str, keep_default_na=False)
+        col = _detect_smiles_column(df)
+    else:
+        df = pd.read_csv(file_path, sep=sep, header=None, dtype=str, keep_default_na=False)
+        col = 0
+    return [s for s in df[col].astype(str).tolist() if s.strip() and s.strip().lower() != "nan"]
 
 
 def parse_compounds_file(file_path: Path) -> List[str]:
@@ -39,25 +67,13 @@ def parse_compounds_file(file_path: Path) -> List[str]:
 
     try:
         if ext in [".csv", ".txt"]:
-            # Read first row to guess if header exists
-            df_test = pd.read_csv(file_path, nrows=1)
-            smiles_col = _detect_smiles_column(df_test)
-            
-            # If the detected column is literally a SMILES string (e.g., 'c1ccccc1'), it has no header
-            if any(c in str(smiles_col) for c in ["=", "#", "(", ")", "c", "C"]):
-                df = pd.read_csv(file_path, header=None)
-                smiles_list = df[0].dropna().astype(str).tolist()
-            else:
-                df = pd.read_csv(file_path)
-                smiles_list = df[smiles_col].dropna().astype(str).tolist()
+            smiles_list = _read_delimited(file_path, ",")
 
         elif ext == ".tsv":
-            df = pd.read_csv(file_path, sep="\t")
-            smiles_col = _detect_smiles_column(df)
-            smiles_list = df[smiles_col].dropna().astype(str).tolist()
+            smiles_list = _read_delimited(file_path, "\t")
 
         elif ext in [".xlsx", ".xls"]:
-            df = pd.read_excel(file_path)
+            df = pd.read_excel(file_path, dtype=str)
             smiles_col = _detect_smiles_column(df)
             smiles_list = df[smiles_col].dropna().astype(str).tolist()
 

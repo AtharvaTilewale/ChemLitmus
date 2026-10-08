@@ -272,7 +272,26 @@ Randomised, non-canonical SMILES of the same molecule (default 5) for machine-le
 
 ---
 
-## PubChem
+## Databases
+
+### `resolve`
+
+```
+chemlitmus resolve QUERY | --file PATH [--sources LIST] [--type T] [--no-unichem] [--timeout S] [--output PATH] [--json PATH]
+```
+
+Query several databases at once and reconcile the answers. `QUERY` is a name, SMILES, InChIKey or native identifier (CID, `CHEMBL…`, `CHEBI:…`, `C…`).
+
+| Option | Values |
+|---|---|
+| `--sources`, `-s` | comma-separated subset of `pubchem`, `chembl`, `chebi`, `kegg`, or `all` (default `pubchem,chembl,chebi`) |
+| `--type`, `-t` | `auto` (default), `name`, `smiles`, `inchikey`, `id` |
+| `--no-unichem` | skip the UniChem cross-reference lookup |
+| `--timeout` | seconds for the whole fan-out per query (default 40) |
+| `--output`, `-o` | batch mode: CSV with one row per *(query, source)* |
+| `--json` | full result(s) — records, merged view, cross-references, agreement — as JSON |
+
+Output: a per-source table (status, id, name, time), the agreement verdict (`agree` / `disagree` / `unknown`, by InChIKey) with the consensus InChIKey, a merged record, cross-references, and source-specific extras. A source that disagrees with the majority or does not know the query is re-queried by the consensus InChIKey. Exit 1 when no source finds the compound. See [Look compounds up across databases](../guides/databases.md).
 
 ### `lookup`
 
@@ -280,7 +299,7 @@ Randomised, non-canonical SMILES of the same molecule (default 5) for machine-le
 chemlitmus lookup QUERY [--type T] [--no-cache]
 ```
 
-`--type`/`-t`: `auto` (default), `cid`, `smiles`, `name`, `inchikey`. Unknown values are rejected before any network call. See [PubChem](../guides/pubchem.md).
+`--type`/`-t`: `auto` (default), `cid`, `smiles`, `name`, `inchikey`. Unknown values are rejected before any network call. PubChem only; see [Look compounds up across databases](../guides/databases.md#pubchem-only-lookup-and-download).
 
 ### `batch`
 

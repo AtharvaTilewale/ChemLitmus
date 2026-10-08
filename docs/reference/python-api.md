@@ -171,7 +171,27 @@ Writes a file; returns a status string (`Generated`, `Skipped (File already exis
 
 ---
 
-## PubChem (network)
+## Databases (network)
+
+### `resolve(query, sources=None, query_type='auto', unichem=True, timeout=40.0) -> ResolveResult`
+
+Query several databases in parallel under one time budget and reconcile the answers. `sources` is a list drawn from `PROVIDERS` (`pubchem`, `chembl`, `chebi`, `kegg`) or `['all']`; default `DEFAULT_SOURCES = ['pubchem', 'chembl', 'chebi']`. `query_type` is one of `auto`, `name`, `smiles`, `inchikey`, `id`. Raises `ValueError` on an unknown source or type; network failures never raise — they appear as `error` outcomes.
+
+`ResolveResult`: `query, query_type, sources, records: list[CompoundRecord], outcomes: list[SourceOutcome], merged: CompoundRecord | None, cross_refs: dict[str, str], consensus_inchikey, agreement ('agree' | 'disagree' | 'unknown'), found`; `by_source(name)` returns that source's record or `None`.
+
+`SourceOutcome`: `source, status ('found' | 'not found' | 'error'), seconds, error`.
+
+`CompoundRecord` (one schema for every database): `source, source_id, name, synonyms, smiles, inchi, inchikey, formula, molecular_weight, monoisotopic_mass, charge, xlogp, tpsa, hbd, hba, rotatable_bonds, cross_refs, url, extra`.
+
+### `get_provider(name) -> Provider`
+
+Cached provider instance. `Provider.lookup(query, query_type='auto', deadline=None) -> CompoundRecord | None`; `by_id`, `by_name`, `by_smiles`, `by_inchikey`; `looks_like_id(query)`. Raises `ProviderError` on HTTP failure. Implementations: `PubChemProvider`, `ChEMBLProvider`, `ChEBIProvider`, `KEGGProvider` in `chemlitmus.providers`.
+
+### `unichem_xrefs(inchikey, timeout=15.0) -> dict[str, str]`
+
+Identifiers for one InChIKey across the [UniChem](https://www.ebi.ac.uk/unichem/) sources, keyed by a short source name (`chembl`, `drugbank`, `chebi`, `pubchem`, `cas`, `hmdb`, `kegg`, `pdbe`, `surechembl`, …; unknown sources as `unichem_src_<n>`).
+
+### PubChem-specific
 
 ### `lookup(query, search_type='auto', use_cache=True) -> PubChemCompound | None`
 

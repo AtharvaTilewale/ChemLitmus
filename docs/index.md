@@ -12,7 +12,7 @@
 - *Is this structural-alert catalogue actually sound, or full of dead and redundant rules?*
 - *Will my PAINS screen give the same answer tomorrow, on another machine?*
 
-Everything runs offline on RDKit except the explicitly network-backed PubChem commands. Every result is a typed Pydantic model, every batch command writes CSV, and every command has a stable exit code so it can guard a pipeline.
+Everything runs offline on RDKit except the explicitly network-backed database commands. Every result is a typed Pydantic model, every batch command writes CSV, and every command has a stable exit code so it can guard a pipeline.
 
 ## Where to start
 
@@ -70,7 +70,8 @@ Everything runs offline on RDKit except the explicitly network-backed PubChem co
 | Generate 2D/3D structures and conformers | [`download --gen all`](reference/cli.md#download), [`conformers`](reference/cli.md#conformers) | yes |
 | Validate a reaction SMILES | [`reaction`](reference/cli.md#reaction) | yes |
 | Get InChI / InChIKey / formula | [`iupacname`](reference/cli.md#iupacname) | yes (name needs `--online`) |
-| Look up a compound in PubChem | [`lookup`](reference/cli.md#lookup), [`batch`](reference/cli.md#batch) | **no** |
+| Look up a compound across PubChem, ChEMBL, ChEBI, KEGG | [`resolve`](reference/cli.md#resolve) | **no** |
+| Look up a compound in PubChem (cached) | [`lookup`](reference/cli.md#lookup), [`batch`](reference/cli.md#batch) | **no** |
 | Download structures from PubChem | [`download`](reference/cli.md#download) | **no** (unless `--gen all`) |
 
 ## Design in one paragraph

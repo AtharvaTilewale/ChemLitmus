@@ -153,4 +153,4 @@ print(rep.n_groups, rep.groups[0].differs_by)      # 1  ['stereochemistry']
 
 - [Guides](../guides/clean-a-library.md) — end-to-end workflows
 - [CLI reference](../reference/cli.md) — every option
-- [Configuration](configuration.md) — cache location, PubChem rate limits, logging
+- [Configuration](configuration.md) — cache location, database rate limits, logging

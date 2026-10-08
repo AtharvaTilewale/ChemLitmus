@@ -2,11 +2,9 @@
 
 import pytest
 from chemlitmus.core.cheminfo import (
-    substructure_search, SubstructureHit,
-    FingerprintResult,
+    substructure_search, FingerprintResult,
     FilterResult,
     SimilarityResult,
-    RuleResult,
     compute_fingerprint,
     apply_filters,
     compute_similarity,

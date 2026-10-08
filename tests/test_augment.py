@@ -1,5 +1,5 @@
 """Tests for chemlitmus.core.augment"""
-from chemlitmus.core.augment import augment_smiles, AugmentResult
+from chemlitmus.core.augment import augment_smiles
 
 def test_augment_valid():
     # A molecule with multiple canonical SMILES possibilities

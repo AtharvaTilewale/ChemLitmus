@@ -1,5 +1,5 @@
 """Tests for chemlitmus.core.stereo"""
-from chemlitmus.core.stereo import analyze_stereochemistry, StereoResult
+from chemlitmus.core.stereo import analyze_stereochemistry
 
 def test_analyze_stereocenters():
     # (R)-2-butanol

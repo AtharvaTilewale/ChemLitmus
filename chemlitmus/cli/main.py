@@ -30,7 +30,7 @@ from chemlitmus.utils.export import export_results
 
 app = typer.Typer(
     name="chemlitmus",
-    help="ChemLitmus: SMILES validation and diagnosis, standardization, molecular identity, SMARTS auditing, and PubChem lookup.",
+    help="ChemLitmus: SMILES validation and diagnosis, standardization, molecular identity, SMARTS auditing, and multi-database lookup (PubChem, ChEMBL, ChEBI, KEGG).",
     add_completion=False,
 )
 console = Console()
@@ -86,6 +86,127 @@ def main(
 ) -> None:
     """ChemLitmus CLI entry point."""
     pass
+
+
+# =============================================================================
+# resolve command (multi-database)
+# =============================================================================
+
+@app.command(name="resolve")
+def resolve_cmd(
+    query: str = typer.Argument(None, help="Name, SMILES, InChIKey, or native ID (CID, CHEMBL…, CHEBI:…, C…)."),
+    file: Optional[Path] = typer.Option(None, "--file", "-f", help="Batch input (CSV/.smi/.txt)."),
+    sources: str = typer.Option("pubchem,chembl,chebi", "--sources", "-s", help="Comma-separated: pubchem, chembl, chebi, kegg, or all."),
+    query_type: str = typer.Option("auto", "--type", "-t", help="auto, name, smiles, inchikey, or id."),
+    no_unichem: bool = typer.Option(False, "--no-unichem", help="Skip UniChem cross-reference lookup."),
+    timeout: float = typer.Option(40.0, "--timeout", help="Seconds allowed for the whole fan-out per query."),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Batch: write one row per (query, source) to CSV."),
+    json_out: Optional[Path] = typer.Option(None, "--json", help="Write the complete result(s) to JSON."),
+) -> None:
+    """Look a compound up in several databases at once and reconcile the answers.
+
+    Queries PubChem, ChEMBL, ChEBI and/or KEGG in parallel, returns one record per source in a
+    common schema, merges them, reports whether the sources agree on the structure (by InChIKey),
+    and gathers cross-database identifiers via UniChem. A name one database knows under a
+    different label is recovered in the others through the structure.
+    """
+    import csv
+    import json
+
+    from chemlitmus.providers import PROVIDERS, resolve
+
+    if query is None and file is None:
+        console.print("[red]Error:[/red] Provide a query or --file.")
+        raise typer.Exit(code=1)
+    src_list = [s.strip().lower() for s in sources.split(",") if s.strip()]
+    bad = [s for s in src_list if s != "all" and s not in PROVIDERS]
+    if bad:
+        console.print(f"[red]Error:[/red] Unknown source(s) {bad}. Available: {sorted(PROVIDERS)} or 'all'.")
+        raise typer.Exit(code=1)
+    if query_type.lower() not in ("auto", "name", "smiles", "inchikey", "id"):
+        console.print(f"[red]Error:[/red] Unknown --type {query_type!r}. Valid: auto, name, smiles, inchikey, id.")
+        raise typer.Exit(code=1)
+
+    def _print_one(res) -> None:
+        head = Table(title=f"[bold]Resolve: {escape(res.query)}[/bold]", show_header=True, header_style="bold magenta")
+        head.add_column("Source", style="cyan"); head.add_column("Status"); head.add_column("ID"); head.add_column("Name", max_width=40, overflow="fold"); head.add_column("Time", justify="right")
+        for o in res.outcomes:
+            rec = res.by_source(o.source)
+            status = {"found": "[green]found[/green]", "not found": "[yellow]not found[/yellow]"}.get(o.status, "[red]error[/red]")
+            head.add_row(o.source, status, escape(rec.source_id) if rec else "", escape(rec.name or "") if rec else escape(o.error or ""), f"{o.seconds:.1f}s")
+        console.print(head)
+        if not res.found:
+            return
+        agree = {"agree": "[green]sources agree on the structure[/green]", "disagree": "[red]sources DISAGREE on the structure[/red]",
+                 "unknown": "[dim]agreement unknown (fewer than two InChIKeys)[/dim]"}[res.agreement]
+        console.print(f"  {agree}" + (f"  ·  InChIKey {res.consensus_inchikey}" if res.consensus_inchikey else ""))
+        mg = res.merged
+        t2 = Table(title="Merged record", show_header=True, header_style="bold blue")
+        t2.add_column("Field", style="cyan"); t2.add_column("Value", overflow="fold")
+        for label, val in (("Name", mg.name), ("Formula", mg.formula), ("MW", mg.molecular_weight), ("Monoisotopic", mg.monoisotopic_mass),
+                           ("SMILES", mg.smiles), ("InChIKey", mg.inchikey), ("XLogP", mg.xlogp), ("HBD / HBA", f"{mg.hbd} / {mg.hba}" if mg.hbd is not None else None),
+                           ("TPSA", mg.tpsa), ("Synonyms", ", ".join(mg.synonyms[:8]) if mg.synonyms else None)):
+            if val not in (None, ""):
+                t2.add_row(label, escape(str(val)))
+        console.print(t2)
+        if res.cross_refs:
+            xr = Table(title="Cross-references", show_header=True, header_style="bold blue")
+            xr.add_column("Database", style="cyan"); xr.add_column("Identifier")
+            for k, v in res.cross_refs.items():
+                xr.add_row(k, escape(str(v)))
+            console.print(xr)
+        for rec in res.records:
+            if rec.extra:
+                bits = []
+                for k, v in rec.extra.items():
+                    if v in (None, "", [], {}):
+                        continue
+                    sv = ", ".join(map(str, v)) if isinstance(v, list) else str(v)
+                    bits.append(f"{k}={sv[:60]}")
+                if bits:
+                    console.print(f"  [dim]{rec.source}:[/dim] " + escape("; ".join(bits[:8])))
+
+    if query is not None and file is None:
+        with console.status(f"[bold green]Resolving '{escape(query)}' across {', '.join(src_list)}...[/bold green]"):
+            res = resolve(query, sources=src_list, query_type=query_type, unichem=not no_unichem, timeout=timeout)
+        _print_one(res)
+        if json_out:
+            json_out.parent.mkdir(parents=True, exist_ok=True)
+            json_out.write_text(json.dumps(res.model_dump(), indent=2, default=str))
+            console.print(f"[green]Saved:[/green] {json_out}")
+        raise typer.Exit(code=0 if res.found else 1)
+
+    queries = parse_compounds_file(file)
+    results = []
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), BarColumn(), TaskProgressColumn(), console=console) as progress:
+        task = progress.add_task("Resolving...", total=len(queries))
+        for q in queries:
+            results.append(resolve(q, sources=src_list, query_type=query_type, unichem=not no_unichem, timeout=timeout))
+            progress.advance(task)
+    n_found = sum(1 for r in results if r.found)
+    n_agree = sum(1 for r in results if r.agreement == "agree")
+    n_dis = sum(1 for r in results if r.agreement == "disagree")
+    console.print(f"\n[bold]Resolved {n_found}/{len(results)}[/bold]  ·  agree {n_agree}  ·  disagree {n_dis}  ·  sources {', '.join(src_list)}")
+    for r in results[:5]:
+        _print_one(r)
+    if len(results) > 5:
+        console.print(f"[dim]... {len(results) - 5} more; use --output / --json to save all.[/dim]")
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with open(output, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["query", "source", "status", "source_id", "name", "smiles", "inchikey", "formula", "molecular_weight", "url", "agreement", "consensus_inchikey", "error"])
+            for r in results:
+                for o in r.outcomes:
+                    rec = r.by_source(o.source)
+                    w.writerow([r.query, o.source, o.status, rec.source_id if rec else "", rec.name if rec else "", rec.smiles if rec else "",
+                                rec.inchikey if rec else "", rec.formula if rec else "", rec.molecular_weight if rec else "", rec.url if rec else "",
+                                r.agreement, r.consensus_inchikey or "", o.error or ""])
+        console.print(f"[green]Saved:[/green] {output}")
+    if json_out:
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        json_out.write_text(json.dumps([r.model_dump() for r in results], indent=2, default=str))
+        console.print(f"[green]Saved:[/green] {json_out}")
 
 
 # =============================================================================

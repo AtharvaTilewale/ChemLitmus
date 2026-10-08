@@ -24,7 +24,7 @@ chemlitmus smartsaudit alerts.csv      # is this PAINS/alert catalogue actually 
 chemlitmus filter --file lib.csv --rules pains --prep explicit-h   # screen, reproducibly
 ```
 
-Offline on RDKit, except the explicitly network-backed PubChem commands. Every result is a typed Pydantic model; every batch command writes CSV; every command has a stable exit code.
+Offline on RDKit, except the explicitly network-backed database commands. Every result is a typed Pydantic model; every batch command writes CSV; every command has a stable exit code.
 
 ## What it does
 
@@ -36,7 +36,7 @@ Offline on RDKit, except the explicitly network-backed PubChem commands. Every r
 | **Audit SMARTS catalogues** — unparseable, dead, over-broad, duplicate, equivalent and subsumed patterns; sensitivity of verdicts to molecule preparation | `smartsaudit` |
 | **Screen and search** — Lipinski/Veber/Ghose/Egan/Ro3, PAINS and QED with the molecule preparation declared and recorded; substructure, similarity, fingerprints, scaffolds, R-groups | `filter` `substructure` `similar` `fingerprint` `scaffold` `rgroup` |
 | **Structures** — 2D/3D generation (ETKDG + MMFF94), conformer ensembles, reaction SMILES, atom maps, SMILES augmentation | `download --gen all` `conformers` `reaction` `atommap` `augment` |
-| **PubChem** — cached, rate-limited lookups and structure downloads | `lookup` `batch` `download` |
+| **Databases** — one query across PubChem, ChEMBL, ChEBI and KEGG; InChIKey agreement check, merged record, UniChem cross-references; cached PubChem lookups and structure downloads | `resolve` `lookup` `batch` `download` |
 
 ## Why these features
 
@@ -49,7 +49,7 @@ That is the gap ChemLitmus fills: the inputs are not clean, the filters are not 
 **[chemlitmus.readthedocs.io](https://chemlitmus.readthedocs.io)**
 
 - [Installation](docs/getting-started/installation.md) · [Quickstart](docs/getting-started/quickstart.md) · [Configuration](docs/getting-started/configuration.md)
-- Guides: [Clean a library](docs/guides/clean-a-library.md) · [Audit an alert set](docs/guides/audit-alert-sets.md) · [Compare collections](docs/guides/compare-libraries.md) · [Search and structures](docs/guides/search-and-structures.md) · [PubChem](docs/guides/pubchem.md)
+- Guides: [Clean a library](docs/guides/clean-a-library.md) · [Audit an alert set](docs/guides/audit-alert-sets.md) · [Compare collections](docs/guides/compare-libraries.md) · [Search and structures](docs/guides/search-and-structures.md) · [Database lookups](docs/guides/databases.md)
 - Reference: [CLI](docs/reference/cli.md) · [Python API](docs/reference/python-api.md)
 - Concepts: [Molecular identity](docs/concepts/molecular-identity.md) · [Molecule preparation](docs/concepts/molecule-preparation.md) · [SMARTS auditing](docs/concepts/smarts-auditing.md) · [SMILES diagnosis](docs/concepts/smiles-diagnosis.md)
 

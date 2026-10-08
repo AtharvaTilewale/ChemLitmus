@@ -1,5 +1,5 @@
 """Tests for chemlitmus.core.reaction"""
-from chemlitmus.core.reaction import validate_reaction, ReactionResult
+from chemlitmus.core.reaction import validate_reaction
 
 def test_valid_reaction():
     # Esterification

@@ -56,6 +56,8 @@ Initial release.
 
 ### Data access and infrastructure
 
+- **`resolve`** — one query across **PubChem, ChEMBL, ChEBI and KEGG** (opt-in) in parallel under a single time budget; every database answers in one `CompoundRecord` schema. Reports whether the sources **agree on the structure** (InChIKey majority), merges the records field-wise, and collects cross-database identifiers (CAS, DrugBank, HMDB, PDBe, SureChEMBL, …) through **UniChem** and the databases' own links. A source that disagrees with the majority, or does not know the name, is re-queried by the consensus InChIKey, so a free-text search that lands on a derivative is corrected by structure.
+- Provider layer `chemlitmus.providers` — `resolve()`, `get_provider()`, `unichem_xrefs()`, `PubChemProvider`, `ChEMBLProvider`, `ChEBIProvider`, `KEGGProvider`; per-database rate limiting and deadline-aware retries so a busy server cannot exceed the fan-out budget.
 - **`lookup`** / **`batch`** — PubChem queries by SMILES, CID, name, InChI or InChIKey, with automatic routing and name-based fallback.
 - Multi-format input parsing for CSV, TSV, XLSX, SMI, SDF and TXT with SMILES column auto-detection.
 - Multithreaded batch processing with thread-safe rate limiting and retry logic.
@@ -75,6 +77,7 @@ Initial release.
 - `scaffold`: acyclic molecules are reported as `acyclic` instead of an empty cell.
 - `download --gen all`: no longer contacts PubChem for a title lookup; the command is fully offline as documented.
 - `diagnose`: RDKit parse messages captured during diagnosis no longer leak to stderr for subsequent parses.
+- Input parsing: a header-less list of names or identifiers (e.g. `aspirin`, `CHEMBL25`, `2244`) no longer loses its first line — the first row is treated as a header only when it is a recognised column name; files with a UTF-8 BOM are read correctly.
 - Removed unused imports; `ruff` configuration migrated to the `[tool.ruff.lint]` table.
 
 ### Tests

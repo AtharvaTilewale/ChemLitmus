@@ -1,6 +1,5 @@
 """Tests for chemlitmus.core.tautomers."""
 
-import pytest
 from chemlitmus.core.tautomers import enumerate_tautomers, TautomerResult
 
 URIC_ACID = "Oc1nc(O)c2nc[nH]c2n1"

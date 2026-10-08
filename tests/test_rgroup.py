@@ -1,5 +1,5 @@
 """Tests for chemlitmus.core.rgroup"""
-from chemlitmus.core.rgroup import rgroup_decomposition, RGroupResult
+from chemlitmus.core.rgroup import rgroup_decomposition
 
 def test_rgroup_match():
     core = "c1ccccc1"

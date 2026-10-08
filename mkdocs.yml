@@ -2,7 +2,7 @@ site_name: ChemLitmus
 site_url: https://chemlitmus.readthedocs.io
 repo_url: https://github.com/AtharvaTilewale/ChemLitmus
 repo_name: AtharvaTilewale/ChemLitmus
-site_description: SMILES validation and diagnosis, molecular identity, structural-alert auditing, and PubChem lookup.
+site_description: SMILES validation and diagnosis, molecular identity, structural-alert auditing, and multi-database compound lookup.
 copyright: MIT licensed. Bundled reference data CC BY-SA 3.0 (ChEMBL).
 
 theme:
@@ -60,7 +60,7 @@ nav:
       - Audit a structural-alert set: guides/audit-alert-sets.md
       - Compare two collections: guides/compare-libraries.md
       - Search, fingerprints and 3D: guides/search-and-structures.md
-      - PubChem lookups: guides/pubchem.md
+      - Database lookups: guides/databases.md
   - Reference:
       - CLI: reference/cli.md
       - Python API: reference/python-api.md

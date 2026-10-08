@@ -32,9 +32,9 @@ Platform directories follow the `platformdirs` convention: `~/.cache`, `~/.local
 !!! tip "Shared or CI environments"
     Point `CHEMLITMUS_CACHE_DIR` at a project-local path (e.g. `./.chemlitmus`) so the PubChem cache travels with the project and does not leak between users on a shared machine.
 
-### PubChem access
+### Database access
 
-These affect only `lookup`, `batch`, `download` (without `--gen all`) and `iupacname --online`.
+These affect `resolve`, `lookup`, `batch`, `download` (without `--gen all`) and `iupacname --online`. `pubchem_timeout` and `pubchem_retries` also bound the per-request behaviour of the ChEMBL, ChEBI and KEGG providers; `resolve --timeout` caps the whole fan-out regardless.
 
 | Setting | Environment variable | Default | Purpose |
 |---|---|---|---|

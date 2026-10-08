@@ -1,6 +1,6 @@
 """Tests for chemlitmus.core.conformers"""
 import os
-from chemlitmus.core.conformers import generate_conformers, ConformerResult
+from chemlitmus.core.conformers import generate_conformers
 
 def test_generate_conformers_valid(tmp_path):
     sdf_out = str(tmp_path / "out.sdf")

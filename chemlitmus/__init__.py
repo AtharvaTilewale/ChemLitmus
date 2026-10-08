@@ -70,6 +70,17 @@ from chemlitmus.core.smartsaudit import (
     load_reference_library,
     prepare_molecule,
 )
+from chemlitmus.providers import (
+    PROVIDERS,
+    DEFAULT_SOURCES,
+    CompoundRecord,
+    ResolveResult,
+    SourceOutcome,
+    ProviderError,
+    get_provider,
+    resolve,
+    unichem_xrefs,
+)
 from chemlitmus.utils.parsers import parse_compounds_file
 from chemlitmus.utils.export import export_results
 
@@ -190,6 +201,16 @@ def download_structure(
     return client.download_structure(cid, format, dimension, output_dir, force)
 
 __all__ = [
+    # Multi-database lookup
+    "PROVIDERS",
+    "DEFAULT_SOURCES",
+    "CompoundRecord",
+    "ResolveResult",
+    "SourceOutcome",
+    "ProviderError",
+    "get_provider",
+    "resolve",
+    "unichem_xrefs",
     # Molecular identity and library comparison
     "IDENTITY_LEVELS",
     "IdentityKeys",

@@ -26,9 +26,27 @@ ChEMBL data are provided by the European Bioinformatics Institute under CC BY-SA
 
 Pass `--library PATH` to `smartsaudit` (or `library=` to `audit_smarts`) to replace the bundled set entirely. No ChEMBL data are then involved, and the CC BY-SA terms do not apply to your results.
 
-## PubChem
+## Online databases
+
+### PubChem
 
 `lookup`, `batch`, `download` and `iupacname --online` query the [PubChem PUG REST](https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest) service. PubChem data are in the public domain in the United States; PubChem asks users to respect its [usage policy](https://pubchem.ncbi.nlm.nih.gov/docs/programmatic-access) — no more than five requests per second, and no more than 400 requests per minute. ChemLitmus throttles to two per second by default. Cached results in your local SQLite database are your own copy.
+
+### ChEMBL
+
+`resolve` with `chembl` queries the [ChEMBL web services](https://www.ebi.ac.uk/chembl/api/data/docs). ChEMBL data are licensed under [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/); please cite Zdrazil et al., *Nucleic Acids Res.* 2024 when results are published.
+
+### ChEBI
+
+`resolve` with `chebi` queries the [ChEBI](https://www.ebi.ac.uk/chebi/) public API. ChEBI data are licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); cite Hastings et al., *Nucleic Acids Res.* 2016.
+
+### KEGG
+
+`resolve` with `kegg` (opt-in; not in the default source list) queries the [KEGG REST API](https://www.kegg.jp/kegg/rest/keggapi.html). KEGG permits API access for **academic, non-commercial use only**; commercial users need a licence from Pathway Solutions. ChemLitmus does not bundle or cache KEGG data. Cite Kanehisa et al., *Nucleic Acids Res.* 2023.
+
+### UniChem
+
+Cross-references come from [UniChem](https://www.ebi.ac.uk/unichem/) (EMBL-EBI), which redistributes identifier mappings from its source databases under their respective terms; the mapping service itself is freely available. Cite Chambers et al., *J. Cheminform.* 2013.
 
 ## Third-party components
 
