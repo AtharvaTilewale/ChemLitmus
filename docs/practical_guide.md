@@ -710,7 +710,7 @@ Equivalence and subsumption are empirical over the reference set, not logical pr
 ## 14.2 Explain one pattern
 
 ```bash
-chemlitmus smartsaudit --explain "[$(N(=O)(=O)),$([N+](=O)[O-])]"
+chemlitmus smartsaudit --explain '[$(N(=O)(=O)),$([N+](=O)[O-])]'
 chemlitmus smartsaudit --explain "c[H]" --library screening_deck.smi --json explain.json
 ```
 
