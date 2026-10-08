@@ -56,6 +56,10 @@ class FilterResult(BaseModel):
     ro3: Optional[RuleResult] = None
     pains: Optional[RuleResult] = None
     passes_all: bool = False
+    preparation: str = Field(
+        "implicit-h",
+        description="Molecule preparation used for substructure-based rules (PAINS): implicit-h, explicit-h or kekule.",
+    )
     error: Optional[str] = None
 
 
@@ -80,6 +84,7 @@ class SubstructureHit(BaseModel):
     smiles: str
     matched: bool
     match_indices: List[int] = Field(default_factory=list)
+    preparation: str = Field("implicit-h", description="Molecule preparation the match was evaluated under.")
 
 def _get_fp_generator(fp_type: str, n_bits: int = 2048):
     """Return an RDKit fingerprint generator for the given type."""
@@ -168,6 +173,7 @@ def compute_fingerprint(
 def apply_filters(
     smiles: str,
     rules: Optional[List[str]] = None,
+    preparation: str = "implicit-h",
 ) -> FilterResult:
     """Evaluate drug-likeness and ADMET filters on a SMILES string (offline, RDKit-based).
 
@@ -175,6 +181,10 @@ def apply_filters(
         smiles: Input SMILES string.
         rules:  Rule names to apply: lipinski, veber, ghose, egan, ro3, pains, qed, or all.
                 Pass None or ['all'] to apply every rule.
+        preparation: How the molecule is prepared before substructure-based rules (PAINS) are
+                applied: ``implicit-h`` (RDKit default), ``explicit-h`` or ``kekule``. Alert
+                catalogues give different answers under different preparations, so the choice
+                is recorded on the result. Property-based rules are unaffected.
 
     Returns:
         A FilterResult with per-rule pass/fail and computed property values.
@@ -195,9 +205,14 @@ def apply_filters(
                 )
             active_rules.add(rc)
 
+    from chemlitmus.core.smartsaudit import PREPARATIONS, prepare_molecule
+
+    if preparation not in PREPARATIONS:
+        raise ValueError(f"Unknown preparation {preparation!r}. Valid options: {PREPARATIONS}")
+
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
-        return FilterResult(smiles=smiles, error="Invalid SMILES: could not be parsed by RDKit.")
+        return FilterResult(smiles=smiles, error="Invalid SMILES: could not be parsed by RDKit.", preparation=preparation)
 
     mw = Descriptors.MolWt(mol)
     logp = Descriptors.MolLogP(mol)
@@ -220,6 +235,7 @@ def apply_filters(
         heavy_atom_count=heavy,
         molar_refractivity=round(mr, 3),
         qed_score=round(qed_val, 4),
+        preparation=preparation,
     )
 
     rule_pass_list: List[bool] = []
@@ -289,7 +305,7 @@ def apply_filters(
         params = FilterCatalog.FilterCatalogParams()
         params.AddCatalog(FilterCatalog.FilterCatalogParams.FilterCatalogs.PAINS)
         catalog = FilterCatalog.FilterCatalog(params)
-        entry = catalog.GetFirstMatch(mol)
+        entry = catalog.GetFirstMatch(prepare_molecule(mol, preparation))
         has_alert = entry is not None
         result.pains = RuleResult(
             passed=not has_alert,
@@ -368,6 +384,7 @@ def substructure_search(
     query: str,
     library: List[str],
     is_smarts: bool = True,
+    preparation: str = "implicit-h",
 ) -> List[SubstructureHit]:
     """Search a library for compounds containing a specific substructure.
 
@@ -375,12 +392,20 @@ def substructure_search(
         query: SMILES or SMARTS string representing the substructure.
         library: List of SMILES strings to search against.
         is_smarts: If True, parse the query as SMARTS. If False, parse as SMILES.
+        preparation: Molecule preparation applied to each library molecule before matching:
+                ``implicit-h`` (RDKit default), ``explicit-h`` or ``kekule``. Patterns that
+                contain hydrogen atoms or Kekulé bonds only match under the matching preparation.
 
     Returns:
         A list of SubstructureHit objects for compounds that matched the query.
     """
     if not _RDKIT_AVAILABLE:
         raise RuntimeError("RDKit is not installed.")
+
+    from chemlitmus.core.smartsaudit import PREPARATIONS, prepare_molecule
+
+    if preparation not in PREPARATIONS:
+        raise ValueError(f"Unknown preparation {preparation!r}. Valid options: {PREPARATIONS}")
 
     # Parse the query
     if is_smarts:
@@ -399,6 +424,7 @@ def substructure_search(
         mol = Chem.MolFromSmiles(smi)
         if mol is None:
             continue
+        mol = prepare_molecule(mol, preparation)
 
         if mol.HasSubstructMatch(q_mol):
             # Get the indices of the atoms in the target molecule that match the query
@@ -408,6 +434,7 @@ def substructure_search(
                     smiles=smi,
                     matched=True,
                     match_indices=list(match),
+                    preparation=preparation,
                 )
             )
 

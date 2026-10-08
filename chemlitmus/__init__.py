@@ -39,6 +39,20 @@ from chemlitmus.core.cheminfo import (
     compute_similarity,
     substructure_search,
 )
+from chemlitmus.core.smartsaudit import (
+    SmartsAuditResult,
+    PatternAudit,
+    SensitivitySummary,
+    SmartsExplanation,
+    AtomExplanation,
+    PREPARATIONS,
+    AUDIT_CHECKS,
+    audit_smarts,
+    explain_smarts,
+    load_patterns,
+    load_reference_library,
+    prepare_molecule,
+)
 from chemlitmus.utils.parsers import parse_compounds_file
 from chemlitmus.utils.export import export_results
 
@@ -159,6 +173,19 @@ def download_structure(
     return client.download_structure(cid, format, dimension, output_dir, force)
 
 __all__ = [
+    # SMARTS auditing
+    "SmartsAuditResult",
+    "PatternAudit",
+    "SensitivitySummary",
+    "SmartsExplanation",
+    "AtomExplanation",
+    "PREPARATIONS",
+    "AUDIT_CHECKS",
+    "audit_smarts",
+    "explain_smarts",
+    "load_patterns",
+    "load_reference_library",
+    "prepare_molecule",
     "lookup",
     "lookup_by_name",
     "lookup_file",

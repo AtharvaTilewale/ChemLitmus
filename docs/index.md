@@ -21,6 +21,7 @@ A high-performance, production-grade tool for SMILES validation, PubChem lookup,
 - **Molecular Fingerprints** - ECFP4, ECFP6, FCFP4, MACCS, RDKit, AtomPair, Torsion offline (`fingerprint` command)
 - **Similarity Search** - Tanimoto-based library search with threshold and top-N (`similar` command)
 - **Drug-Likeness Filtering** - Lipinski, Veber, Ghose, Egan, Ro3, PAINS, QED (`filter` command) from SMILES via RDKit with forcefield optimization
+- **SMARTS Pattern Auditing** - Validate structural-alert and substructure-filter sets for unparseable, dead, redundant, over-broad and preparation-sensitive patterns (`smartsaudit` command)
 - **Batch Processing** - Process hundreds of compounds with progress tracking
 - **Async/Multithreading** - Fast parallel downloads with retry logic
 - **Caching** - SQLite database for storing results locally

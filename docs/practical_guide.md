@@ -45,6 +45,11 @@ Welcome to the comprehensive tutorial for **ChemLitmus**. This guide is designed
   - [13.5 R-Group Decomposition](#135-r-group-decomposition)
   - [13.6 SMILES Augmentation](#136-smiles-augmentation)
   - [13.7 Atom Mapping](#137-atom-mapping)
+- [14. SMARTS Pattern Auditing](#14-smarts-pattern-auditing)
+  - [14.1 Audit a catalogue](#141-audit-a-catalogue)
+  - [14.2 Explain one pattern](#142-explain-one-pattern)
+  - [14.3 Declare the preparation when screening](#143-declare-the-preparation-when-screening)
+  - [14.4 Python API](#144-python-api)
 - [Learn More](#learn-more)
 
 ---
@@ -645,4 +650,96 @@ chemlitmus augment "CC(=O)OC1=CC=CC=C1C(=O)O" --num 10
 Assign map indices to every atom, useful for reaction tracking and graph networks.
 ```bash
 chemlitmus atommap "CCO"
+```
+
+
+# 14. SMARTS Pattern Auditing
+
+Structural-alert catalogues are redistributed as plain SMARTS text and applied with whatever molecule
+preparation a toolkit defaults to. `smartsaudit` evaluates a pattern set against a reference population of
+real molecules and reports what is wrong with it before you use it to reject compounds.
+
+## 14.1 Audit a catalogue
+
+```bash
+# CSV with a 'smarts' column (optional 'description' and 'rule_set_name'), or a text file of SMARTS
+chemlitmus smartsaudit alerts.csv
+
+# Save the per-pattern table and the complete result
+chemlitmus smartsaudit alerts.csv --output audit.csv --json audit.json
+
+# Run a subset of checks, tighten the over-broad threshold, list more flagged rows
+chemlitmus smartsaudit alerts.csv --checks redundancy,dead --breadth-threshold 0.05 --show 40
+
+# Use your own compound collection as the reference population
+chemlitmus smartsaudit alerts.csv --library screening_deck.smi
+```
+
+The terminal summary has two tables. The first counts patterns per defect class; the second shows how
+many compounds the whole catalogue flags under each molecule preparation and how many compounds change
+their pass/fail verdict relative to the default. A catalogue whose verdict flips for a sizeable share of
+compounds is not reproducible unless the preparation is declared.
+
+Reading the flags in `audit.csv`:
+
+| Flag | Meaning | Typical action |
+|---|---|---|
+| `unparseable` | RDKit rejects the SMARTS | Fix the syntax |
+| `needs-explicit-h` | Contains a hydrogen atom; silently dead unless molecules carry explicit H | Run with `--prep explicit-h`, or rewrite with H-count primitives (`[CH2]`) |
+| `over-broad` | Matches more than the threshold share of the reference set | Check it is a deliberate property filter, not a mis-specified alert |
+| `dead:never-matching-atom` | A query atom matches no real atom | Likely defective (e.g. `[N+]#[C-]`, which sanitization never produces) |
+| `dead:rare-combination` | Every atom is realisable; the combination does not occur | Probably fine; the alert targets rare chemistry |
+| `dead:fires-only-with-<prep>` | Alive under another preparation | Declare that preparation |
+| `duplicate` | Identical SMARTS string appears earlier | Remove, or keep for provenance |
+| `equivalent` | Identical hit set to another pattern on this reference set | Inspect; may differ on other chemistry |
+| `subsumed` | Another pattern's hits contain all of this one's | Redundant as a rejection rule |
+| `prep-sensitive` | Hit count changes with preparation | Declare the preparation wherever the pattern is used |
+
+Equivalence and subsumption are empirical over the reference set, not logical properties of the SMARTS.
+"Never fires" is an upper bound on dead rules: alert sets deliberately target rare liabilities.
+
+## 14.2 Explain one pattern
+
+```bash
+chemlitmus smartsaudit --explain "[$(N(=O)(=O)),$([N+](=O)[O-])]"
+chemlitmus smartsaudit --explain "c[H]" --library screening_deck.smi --json explain.json
+```
+
+Shows the normalized SMARTS, whether it needs explicit hydrogens, hits under each preparation, example
+matches, and for every query atom how many reference molecules contain an atom satisfying that primitive
+alone. An atom with zero is the reason a pattern can never fire.
+
+## 14.3 Declare the preparation when screening
+
+```bash
+chemlitmus filter --file library.csv --rules pains --prep explicit-h --output screened.csv
+chemlitmus substructure "C1=CC=CC=C1" --file library.smi --prep kekule
+```
+
+The chosen preparation is written into every output row (`preparation` column), so a screen can be
+reproduced exactly.
+
+## 14.4 Python API
+
+```python
+from chemlitmus import audit_smarts, explain_smarts, load_patterns, load_reference_library
+
+patterns = load_patterns("alerts.csv")
+mols, source = load_reference_library()            # or load_reference_library("screening_deck.smi")
+
+res = audit_smarts(patterns, library=mols, library_source=source, breadth_threshold=0.05)
+print(res.n_patterns, res.n_dead, res.n_subsumed, res.n_clean)
+print(res.sensitivity.compounds_flagged, res.sensitivity.verdict_flips)
+
+for p in res.patterns:
+    if p.dead_verdict == "never-matching atom":
+        print(p.name, p.smarts, p.never_matching_atoms)
+
+import csv
+rows = res.to_rows()
+with open("audit.csv", "w", newline="") as f:
+    w = csv.DictWriter(f, fieldnames=rows[0].keys()); w.writeheader(); w.writerows(rows)
+
+e = explain_smarts("c:1(:c:c:c(:c:c:1)-[#6]=[#7]-[#7])-[#8]-[#1]", library=mols)
+print(e.verdict, e.hits_by_preparation)
 ```

@@ -21,6 +21,7 @@ A high-performance, production-grade tool for SMILES validation, PubChem lookup,
 - **Molecular Fingerprints** - ECFP4, ECFP6, FCFP4, MACCS, RDKit, AtomPair, Torsion fingerprints offline (`fingerprint` command)
 - **Similarity Search** - Tanimoto-based library search with threshold and top-N ranking (`similar` command)
 - **Drug-Likeness Filtering** - Lipinski Ro5, Veber, Ghose, Egan, Ro3, PAINS alerts, and QED scoring (`filter` command)
+- **SMARTS Pattern Auditing** - Validate structural-alert and substructure-filter sets for unparseable, dead, redundant, over-broad and preparation-sensitive patterns (`smartsaudit` command)
 - **Batch Processing** - Process hundreds of compounds with progress tracking
 - **Async/Multithreading** - Fast parallel downloads with retry logic
 - **Caching** - SQLite database for storing results locally
@@ -256,6 +257,72 @@ print(result.inchikey)           # LFQSCWFLJHTTHZ-UHFFFAOYSA-N
 print(result.molecular_formula)  # C2H6O
 print(result.iupac_name)         # ethanol
 print(result.iupac_name_source)  # pubchem (or 'cache' on repeat calls)
+```
+
+## SMARTS Pattern Auditing
+
+Structural-alert sets (PAINS, Brenk, Glaxo, in-house filters) are passed around as SMARTS text and applied
+with whatever molecule preparation a toolkit happens to use. Nobody checks them. `smartsaudit` evaluates a
+pattern set against a reference population of real molecules and reports what is actually wrong with it.
+Fully **offline**; matching runs multithreaded in C++ through RDKit's `SubstructLibrary`.
+
+```bash
+# Audit a catalogue (CSV with a 'smarts' column, or one SMARTS per line)
+chemlitmus smartsaudit alerts.csv
+
+# Write the per-pattern table and the full result
+chemlitmus smartsaudit alerts.csv --output audit.csv --json audit.json
+
+# Only the checks you want; tighten the breadth threshold to 5 %
+chemlitmus smartsaudit alerts.csv --checks redundancy,dead --breadth-threshold 0.05
+
+# Audit against your own compound collection instead of the bundled reference set
+chemlitmus smartsaudit alerts.csv --library my_library.smi
+
+# Debug one pattern: atom-by-atom realisability, hits per preparation, example matches
+chemlitmus smartsaudit --explain "c:1(:c:c:c(:c:c:1)-[#6]=[#7]-[#7])-[#8]-[#1]"
+```
+
+| Check | What it reports |
+|---|---|
+| **compile** | Patterns RDKit cannot parse; patterns that contain a hydrogen atom and are therefore silently dead unless molecules carry explicit hydrogens |
+| **breadth** | Patterns matching more than a threshold share of the reference set (default 10 %) |
+| **dead** | Patterns that match nothing, triaged into *never-matching atom* (a query atom no real atom satisfies — likely defective), *rare combination* (every atom is realisable), or *fires only with &lt;preparation&gt;* |
+| **redundancy** | Exact duplicate SMARTS; patterns with identical hit sets; patterns strictly subsumed by another pattern in the set |
+| **sensitivity** | How hit counts and per-compound pass/fail verdicts change when molecules are prepared with implicit hydrogens, explicit hydrogens, or kekulized bonds |
+
+The bundled reference set is 9,272 ChEMBL molecules (3,417 approved drugs plus a small-molecule sample); see
+[`chemlitmus/data/README.md`](https://github.com/AtharvaTilewale/ChemLitmus/blob/main/chemlitmus/data/README.md)
+for provenance and licence. A thousand-pattern catalogue audits in about a minute on a laptop.
+
+### Declaring molecule preparation
+
+Because alert catalogues give different answers under different preparations, `filter` and `substructure`
+now take `--prep implicit-h|explicit-h|kekule` and record the choice in their output, so a screen can be
+reproduced exactly:
+
+```bash
+chemlitmus filter --file library.csv --rules pains --prep explicit-h --output screened.csv
+chemlitmus substructure "c[H]" --file library.smi --prep explicit-h
+```
+
+### Python API
+
+```python
+from chemlitmus import audit_smarts, explain_smarts, load_patterns, load_reference_library
+
+patterns = load_patterns("alerts.csv")              # [(smarts, name, rule_set), ...]
+mols, source = load_reference_library()             # bundled set, or pass a path
+
+result = audit_smarts(patterns, library=mols, library_source=source)
+print(result.n_dead, result.n_subsumed, result.sensitivity.verdict_flips)
+for p in result.patterns:
+    if not p.clean:
+        print(p.name, p.flags)
+
+e = explain_smarts("[N+]#[C-]", library=mols)
+print(e.verdict)                                    # dead: never-matching atom
+print([(a.query, a.n_matching_molecules) for a in e.atoms])
 ```
 
 ---

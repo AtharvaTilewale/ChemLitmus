@@ -12,7 +12,7 @@ license = {text = "MIT"}
 authors = [
     {name = "Atharva Tilewale", email = "tilewale.atharva@gmail.com"}
 ]
-keywords = ["cheminformatics", "SMILES", "PubChem", "chemistry", "RDKit"]
+keywords = ["cheminformatics", "SMILES", "SMARTS", "structural alerts", "PubChem", "chemistry", "RDKit"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",
@@ -37,6 +37,7 @@ dependencies = [
     "pydantic-settings>=2.0.0",
     "platformdirs>=4.0.0",
     "packaging>=23.0",
+    "numpy>=1.24",
 ]
 
 [project.optional-dependencies]
@@ -55,7 +56,10 @@ dev = [
 chemlitmus = "chemlitmus.cli:app"
 
 [tool.setuptools]
-packages = ["chemlitmus", "chemlitmus.core", "chemlitmus.cli", "chemlitmus.utils"]
+packages = ["chemlitmus", "chemlitmus.core", "chemlitmus.cli", "chemlitmus.utils", "chemlitmus.data"]
+
+[tool.setuptools.package-data]
+"chemlitmus.data" = ["*.smi.gz", "README.md"]
 
 [tool.black]
 line-length = 100

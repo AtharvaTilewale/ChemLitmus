@@ -35,6 +35,13 @@ Initial release.
 - **`reaction`** — reaction SMILES/SMIRKS parsing and validation, reporting reactant, agent and product counts.
 - **`augment`** — randomized non-canonical SMILES generation for machine-learning data augmentation.
 
+### Pattern quality control
+
+- **`smartsaudit`** — audit a SMARTS pattern set (structural alerts, substructure filters) against a reference molecule population: unparseable patterns, patterns that need explicit hydrogens, over-broad patterns, dead patterns triaged into never-matching atom / rare combination / fires-only-under-another-preparation, exact and library-equivalent duplicates, strict subsumption, and sensitivity of hit counts and per-compound verdicts to molecule preparation (implicit H, explicit H, kekulized). `--explain` decomposes a single pattern atom by atom. Matching runs multithreaded through RDKit's `SubstructLibrary`.
+- Bundled 9,272-molecule ChEMBL-derived reference library (`chemlitmus/data/`, CC BY-SA 3.0); `--library` substitutes any SMILES-bearing file.
+- **`--prep`** on `filter` and `substructure` — declare the molecule preparation used for substructure matching; recorded in every output row (`FilterResult.preparation`, `SubstructureHit.preparation`).
+- Python API: `audit_smarts`, `explain_smarts`, `load_patterns`, `load_reference_library`, `prepare_molecule`; models `SmartsAuditResult`, `PatternAudit`, `SensitivitySummary`, `SmartsExplanation`, `AtomExplanation`.
+
 ### Data access and infrastructure
 
 - **`lookup`** / **`batch`** — PubChem queries by SMILES, CID, name, InChI or InChIKey, with automatic routing and name-based fallback.
@@ -47,4 +54,4 @@ Initial release.
 
 ### Tests
 
-- 136 offline tests plus 8 networked integration tests, running on Python 3.10–3.12.
+- 162 offline tests plus 8 networked integration tests, running on Python 3.10–3.12.

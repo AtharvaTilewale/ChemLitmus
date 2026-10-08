@@ -26,7 +26,11 @@ ChemLitmus is a production-grade, offline-first command-line tool and Python lib
 * **`substructure`**: Perform strict Substructure Searches against a library using SMARTS patterns or exact SMILES fragments.
 * **`filter`**: Apply strict ADMET drug-likeness rules (e.g., Lipinski's Rule of 5) to screen out undesirable compounds from a dataset.
 
-### 5. Utilities
+### 5. Pattern Quality Control
+* **`smartsaudit`**: Audit a SMARTS pattern set (structural alerts, substructure filters) against a reference molecule population. Reports unparseable patterns, patterns that need explicit hydrogens, over-broad patterns, dead patterns (triaged into never-matching atom vs rare combination vs fires-only-under-another-preparation), exact/equivalent/subsumed redundancy, and sensitivity of hit counts and pass/fail verdicts to molecule preparation. `--explain` decomposes a single pattern atom by atom. Ships a 9,272-molecule ChEMBL-derived reference set; `--library` substitutes your own.
+* **`--prep`** on `filter` and `substructure`: declare the molecule preparation (`implicit-h`, `explicit-h`, `kekule`) used for substructure matching; the choice is recorded in every output row.
+
+### 6. Utilities
 * **`update`**: Automatically download and install the latest version of ChemLitmus from GitHub or PyPI.
 
 ---

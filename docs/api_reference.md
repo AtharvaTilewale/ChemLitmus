@@ -259,3 +259,86 @@ Computes Tanimoto similarity between a query SMILES and a list of library SMILES
 | `hit` | `str` | Library SMILES of the hit |
 | `similarity` | `float` | Tanimoto similarity score (0–1) |
 | `fingerprint_type` | `str` | Fingerprint algorithm used |
+
+
+## SMARTS Pattern Auditing
+
+### `audit_smarts(patterns, library=None, library_source="user-supplied", checks=None, breadth_threshold=0.10, preparations=None, dead_sample=2500)`
+
+Audit a set of SMARTS patterns against a reference molecule population.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `patterns` | `list[str]` or `list[tuple]` | SMARTS strings, or `(smarts, name, rule_set)` tuples from `load_patterns()` |
+| `library` | `list[rdkit.Chem.Mol]` | Reference molecules; `None` loads the bundled set |
+| `checks` | `list[str]` | Subset of `AUDIT_CHECKS` (`compile`, `breadth`, `dead`, `redundancy`, `sensitivity`); `None` runs all |
+| `breadth_threshold` | `float` | Hit fraction above which a pattern is flagged over-broad |
+| `preparations` | `list[str]` | Subset of `PREPARATIONS` for the sensitivity check; the first entry is the default preparation |
+| `dead_sample` | `int` | Molecules sampled for atom-level triage of dead patterns |
+
+Returns `SmartsAuditResult`.
+
+### `explain_smarts(smarts, library=None, preparations=None, n_examples=5, sample=2500)`
+
+Decompose one pattern: per-atom realisability, hits per preparation, example matches. Returns `SmartsExplanation`.
+
+### `load_patterns(path)`
+
+Read `(smarts, name, rule_set)` tuples from CSV/TSV/XLSX (column `smarts`, optional `name`/`description` and `rule_set_name`/`rule_set`) or from a text file with one SMARTS per line (optional trailing name; `#` comments).
+
+### `load_reference_library(path=None, max_molecules=None)`
+
+Returns `(molecules, source_label)`. `None` loads the bundled ChEMBL-derived set (9,272 molecules; see `chemlitmus/data/README.md`).
+
+### `prepare_molecule(mol, preparation)`
+
+Return a copy of `mol` as `implicit-h` (unchanged), `explicit-h` (`AddHs`) or `kekule` (Kekulé bonds, aromatic flags cleared).
+
+### Data Models
+
+`SmartsAuditResult`
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `n_patterns`, `n_molecules` | `int` | Sizes |
+| `library_source` | `str` | Where the reference molecules came from |
+| `checks_run` | `list[str]` | Checks executed |
+| `patterns` | `list[PatternAudit]` | One record per input pattern, in input order |
+| `sensitivity` | `SensitivitySummary` | Catalogue-level reproducibility summary (`None` if not run) |
+| `n_unparseable`, `n_needs_explicit_h`, `n_over_broad`, `n_dead`, `n_dead_never_matching_atom`, `n_duplicates`, `n_equivalent`, `n_subsumed`, `n_clean` | `int` | Aggregate counts (properties) |
+| `to_rows()` | `list[dict]` | Flat rows for CSV export |
+
+`PatternAudit`
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `index`, `smarts`, `name`, `rule_set` | | Identity |
+| `parses`, `parse_error` | `bool`, `str` | Compile status |
+| `n_query_atoms`, `has_recursive_smarts` | `int`, `bool` | Structure |
+| `requires_explicit_h` | `bool` | Contains a hydrogen query atom (positive, not negated or alternated) |
+| `n_hits`, `hit_fraction`, `over_broad` | | Breadth under the default preparation |
+| `never_fires`, `dead_verdict`, `never_matching_atoms` | | Dead-rule triage: `rare combination`, `never-matching atom`, or `fires only with <prep>` |
+| `duplicate_of`, `equivalent_to`, `subsumed_by` | | Redundancy, as indices into `patterns` |
+| `hits_by_preparation`, `preparation_sensitive` | `dict`, `bool` | Sensitivity |
+| `flags`, `clean` | `list[str]`, `bool` | Summary (properties) |
+
+`SensitivitySummary`
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `preparations` | `list[str]` | Preparations compared |
+| `compounds_flagged`, `total_hits`, `patterns_firing` | `dict[str,int]` | Per preparation |
+| `verdict_flips` | `dict[str,int]` | Molecules whose pass/fail verdict differs from the default preparation |
+| `n_sensitive_patterns` | `int` | Patterns whose hit count varies |
+
+`SmartsExplanation`
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `smarts`, `normalized_smarts`, `parses`, `parse_error` | | Identity and compile status |
+| `n_query_atoms`, `n_query_bonds`, `requires_explicit_h`, `has_recursive_smarts` | | Structure |
+| `atoms` | `list[AtomExplanation]` | Per atom: `query`, `n_matching_molecules`, `is_hydrogen` |
+| `hits_by_preparation`, `n_molecules`, `example_matches` | | Whole-pattern behaviour |
+| `never_matching_atoms`, `verdict` | | Diagnosis |
+
+`FilterResult.preparation` and `SubstructureHit.preparation` record the molecule preparation used (`apply_filters(..., preparation=)`, `substructure_search(..., preparation=)`).
