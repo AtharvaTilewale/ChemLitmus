@@ -162,7 +162,9 @@ def test_cleanup_proposals_preserve_provenance():
     res = audit_smarts(pats, library=lib, checks=["compile", "breadth", "dead", "redundancy", "proof"])
     rep = propose_cleanup(res)
     by_name = {p.name: p for p in rep.proposals}
-    assert by_name["alcohol-copy"].action == "recommended" and "duplicate" in by_name["alcohol-copy"].evidence[0]
+    # one member of the equivalent pair is kept; only the duplicate is proposed
+    assert "alcohol" not in by_name and rep.n_retained_representatives >= 1
+    assert by_name["alcohol-copy"].action == "recommended" and "exact text duplicate" in by_name["alcohol-copy"].evidence
     assert by_name["alkylol"].action == "keep provenance" and by_name["alkylol"].crosses_rule_sets
     assert "SetA" in by_name["alkylol"].covered_by_rule_sets and "provenance" in rep.note
     assert propose_cleanup(res, allow_cross_set=True).by_action.get("keep provenance") is None

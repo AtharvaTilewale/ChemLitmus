@@ -9,7 +9,9 @@ removing it would destroy.
 
 The default is conservative: only proposals backed by a **static proof** are marked
 ``recommended``; observed-only evidence is ``review``, and anything that crosses a rule-set
-boundary is ``keep provenance`` regardless of how strong the evidence is.
+boundary is ``keep provenance`` regardless of how strong the evidence is. One member of every
+mutually-equivalent set is always retained, so applying every proposal can never delete a rule's
+behaviour outright.
 """
 
 from __future__ import annotations
@@ -40,6 +42,7 @@ class CleanupProposal(BaseModel):
 
 class CleanupReport(BaseModel):
     n_patterns: int
+    n_retained_representatives: int = Field(0, description="Patterns kept as the representative of their equivalence class; a mutually equivalent set is never proposed away entirely.")
     n_proposed: int
     by_action: Dict[str, int] = Field(default_factory=dict)
     n_verdict_changes_if_all_applied: int = Field(0, description="Molecules whose flagged verdict would change if every 'recommended' proposal were applied.")
@@ -59,8 +62,21 @@ def propose_cleanup(audit: SmartsAuditResult, allow_cross_set: bool = False) -> 
         p = by_index.get(i)
         return (p.name or p.smarts) if p else str(i)
 
+    # A mutually-equivalent set must keep one member: propose only the later ones, never all of them.
+    retained: set = set()
+    for p in audit.patterns:
+        mutual = set(p.proven_equivalent_to) | set(p.equivalent_to) | ({p.duplicate_of} if p.duplicate_of is not None else set())
+        mutual |= {q.index for q in audit.patterns if q.duplicate_of == p.index}
+        if not mutual:
+            continue                      # singletons are judged on their own evidence below
+        klass = sorted(mutual | {p.index})
+        if not (set(klass) & retained):
+            retained.add(klass[0])        # keep the first member of each equivalence class
+
     proposals: List[CleanupProposal] = []
     for p in audit.patterns:
+        if p.index in retained:
+            continue
         covers: List[int] = list(p.proven_subsumed_by) or ([p.duplicate_of] if p.duplicate_of is not None else []) or \
             ([p.subsumed_by] if p.subsumed_by is not None else []) or list(p.equivalent_to)
         if not covers:
@@ -86,7 +102,7 @@ def propose_cleanup(audit: SmartsAuditResult, allow_cross_set: bool = False) -> 
             hits_lost_on_panel=0, rationale=rationale,
         ))
 
-    rep = CleanupReport(n_patterns=len(audit.patterns), n_proposed=len(proposals), by_action=dict(Counter(p.action for p in proposals)),
+    rep = CleanupReport(n_patterns=len(audit.patterns), n_retained_representatives=len(retained), n_proposed=len(proposals), by_action=dict(Counter(p.action for p in proposals)),
                         panel=audit.library_source, n_molecules=audit.n_molecules, proposals=proposals)
     # A 'recommended' removal should change no verdict on the panel: proven containment guarantees it,
     # and the count is reported so the guarantee is visible rather than assumed.
