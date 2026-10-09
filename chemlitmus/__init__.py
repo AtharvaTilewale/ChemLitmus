@@ -71,6 +71,8 @@ from chemlitmus.core.smartsaudit import (
     prepare_molecule,
 )
 from chemlitmus.core.dataset_audit import DatasetAudit, ISSUE_CATALOGUE, audit_dataset
+from chemlitmus.core.splits import SplitReport, make_splits
+from chemlitmus.core.generation import GenerationReport, evaluate_generated
 from chemlitmus.core.leakage import LeakageReport, leakage_report
 from chemlitmus.core.labels import LabelConflictReport, label_conflicts
 from chemlitmus.core.report import CleanPolicy, GatePolicy, GateResult, evaluate_gates, render_html, write_audit_outputs
@@ -230,6 +232,11 @@ __all__ = [
     "evaluate_gates",
     "write_audit_outputs",
     "render_html",
+    # Splits and generation
+    "make_splits",
+    "SplitReport",
+    "evaluate_generated",
+    "GenerationReport",
     # Records, policy, provenance
     "Record",
     "RecordSet",

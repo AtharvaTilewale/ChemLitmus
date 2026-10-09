@@ -273,3 +273,159 @@ def conflicts_cmd(
         json_out.parent.mkdir(parents=True, exist_ok=True)
         json_out.write_text(json.dumps(rep.model_dump(), indent=2)); console.print(f"[green]Saved:[/green] {json_out}")
     raise typer.Exit(code=0)
+
+
+@app.command(name="split")
+def split_cmd(
+    dataset: Path = typer.Argument(..., help="Dataset to split."),
+    fractions: str = typer.Option("train=0.8,test=0.2", "--fractions", "-f", help="name=fraction pairs; must sum to 1."),
+    strategy: str = typer.Option("identity", "--strategy", "-s", help="random | identity | scaffold | temporal | source."),
+    seed: int = typer.Option(0, "--seed", help="Reproduces random, identity and scaffold assignments."),
+    structure_column: Optional[str] = typer.Option(None, "--structure-column"),
+    id_column: Optional[str] = typer.Option(None, "--id-column"),
+    endpoint_column: Optional[str] = typer.Option(None, "--endpoint-column", help="Reported per split as balance."),
+    date_column: Optional[str] = typer.Option(None, "--date-column", help="Required by --strategy temporal."),
+    source_column: Optional[str] = typer.Option(None, "--source-column", help="Required by --strategy source."),
+    config: Optional[str] = typer.Option(None, "--config", "-c"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="CSV of record_id, source_id, smiles, group_key, split."),
+    json_out: Optional[Path] = typer.Option(None, "--json", help="Full report including the post-split leakage check."),
+) -> None:
+    """Generate reproducible splits that never divide an identity or scaffold group."""
+    import csv
+    import json
+
+    from chemlitmus.core.policy import resolve_policy
+    from chemlitmus.core.records import read_records
+    from chemlitmus.core.splits import STRATEGIES, make_splits
+
+    if strategy not in STRATEGIES:
+        console.print(f"[red]Error:[/red] Unknown --strategy {strategy!r}. Valid: {', '.join(STRATEGIES)}.")
+        raise typer.Exit(code=1)
+    try:
+        fr = {k.strip(): float(v) for k, v in (p.split("=") for p in fractions.split(","))}
+    except ValueError:
+        console.print("[red]Error:[/red] --fractions must look like train=0.8,test=0.2.")
+        raise typer.Exit(code=1)
+    if strategy == "temporal" and not date_column:
+        console.print("[red]Error:[/red] --strategy temporal needs --date-column."); raise typer.Exit(code=1)
+    if strategy == "source" and not source_column:
+        console.print("[red]Error:[/red] --strategy source needs --source-column."); raise typer.Exit(code=1)
+    policy = resolve_policy(config)
+    roles = {k: v for k, v in (("endpoint", endpoint_column), ("date", date_column), ("source", source_column)) if v}
+    try:
+        rs = read_records(dataset, structure_column=structure_column, id_column=id_column, roles=roles or None)
+    except (SchemaError, FileNotFoundError, ValueError) as exc:
+        console.print(f"[red]Error:[/red] {escape(str(exc))}"); raise typer.Exit(code=1)
+    recs = [{"record_id": r.record_id, "source_id": r.source_id, "smiles": r.parsed_smiles or "", **r.fields,
+             **({"date": r.fields.get(date_column)} if date_column else {}), **({"source": r.fields.get(source_column)} if source_column else {})}
+            for r in rs.records]
+    try:
+        rep = make_splits(recs, fr, strategy=strategy, policy=policy, seed=seed, endpoint_field=endpoint_column)
+    except ValueError as exc:
+        console.print(f"[red]Error:[/red] {escape(str(exc))}"); raise typer.Exit(code=1)
+    t = Table(title=f"[bold]{escape(strategy)} split[/bold] (seed {rep.seed})", show_header=True, header_style="bold magenta")
+    t.add_column("Split", style="cyan"); t.add_column("Records", justify="right"); t.add_column("Requested", justify="right"); t.add_column("Achieved", justify="right"); t.add_column("Endpoint balance", overflow="fold")
+    for n in rep.requested_fractions:
+        t.add_row(n, str(rep.n_by_split.get(n, 0)), f"{rep.requested_fractions[n]:.1%}", f"{rep.achieved_fractions.get(n, 0):.1%}", escape(str(rep.endpoint_balance.get(n, ""))))
+    console.print(t)
+    console.print(f"  {rep.n_records} records · {rep.n_excluded} excluded · {rep.n_groups} indivisible groups "
+                  f"(min {rep.group_sizes['min']}, median {rep.group_sizes['median']}, max {rep.group_sizes['max']} = {rep.group_sizes['largest_fraction_percent']}% of the data)")
+    for c in rep.conflicts:
+        console.print(f"  [yellow]constraint:[/yellow] {escape(c)}")
+    if rep.leakage:
+        for p in rep.leakage["pairs"]:
+            ov = {o["level"]: o["n_eval_records"] for o in p["overlap"]}
+            console.print(f"  verification {p['reference_split']}→{p['evaluation_split']}: " + " · ".join(f"{k} {v}" for k, v in ov.items()))
+    console.print(f"  [dim]{escape(rep.note)}[/dim]")
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with open(output, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh); w.writerow(["record_id", "source_id", "smiles", "group_key", "split"])
+            for a in rep.assignments:
+                w.writerow([a.record_id, a.source_id or "", a.smiles, a.group_key, a.split])
+        console.print(f"[green]Saved:[/green] {output}")
+    if json_out:
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        json_out.write_text(json.dumps(rep.model_dump(), indent=2, default=str)); console.print(f"[green]Saved:[/green] {json_out}")
+    raise typer.Exit(code=0)
+
+
+@app.command(name="generated")
+def generated_cmd(
+    generated: Path = typer.Argument(..., help="File of generated SMILES (one per line, or a table with a structure column). Do not pre-filter."),
+    reference: Optional[List[Path]] = typer.Option(None, "--reference", "-r", help="Reference/training collection(s) for novelty. Repeatable."),
+    structure_column: Optional[str] = typer.Option(None, "--structure-column"),
+    config: Optional[str] = typer.Option(None, "--config", "-c"),
+    constraints: Optional[str] = typer.Option(None, "--constraints", help="e.g. 'mw=0:500,logp=-1:5' using audit descriptor names."),
+    repair: bool = typer.Option(False, "--repair", help="Also evaluate mechanical repair candidates, as a separate population."),
+    json_out: Optional[Path] = typer.Option(None, "--json"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Per-molecule CSV."),
+) -> None:
+    """Evaluate generated molecules: validity, uniqueness, novelty, diversity, alerts and constraints,
+    each with its denominator stated."""
+    import csv
+    import json
+
+    from chemlitmus.core.generation import evaluate_generated
+    from chemlitmus.core.policy import resolve_policy
+    from chemlitmus.core.records import read_records
+
+    policy = resolve_policy(config)
+    cons = {}
+    if constraints:
+        try:
+            for part in constraints.split(","):
+                name, rng = part.split("=")
+                lo, hi = rng.split(":")
+                cons[name.strip()] = (float(lo) if lo else None, float(hi) if hi else None)
+        except ValueError:
+            console.print("[red]Error:[/red] --constraints must look like 'mw=0:500,logp=-1:5'."); raise typer.Exit(code=1)
+    try:
+        rs = read_records(generated, structure_column=structure_column, ambiguous="first")
+        outs = [r.structure or "" for r in rs.records if r.structure_format == "smiles"]
+        refs = {}
+        for f in reference or []:
+            rr = read_records(f, ambiguous="first")
+            refs[f.stem] = [r.parsed_smiles for r in rr.ok_records()]
+    except (SchemaError, FileNotFoundError, ValueError) as exc:
+        console.print(f"[red]Error:[/red] {escape(str(exc))}"); raise typer.Exit(code=1)
+    rep = evaluate_generated(outs, reference=refs or None, policy=policy, constraints=cons or None, repair=repair)
+    t = Table(title="[bold]Generated molecules[/bold]", show_header=True, header_style="bold magenta")
+    t.add_column("Metric", style="cyan"); t.add_column("Value", justify="right"); t.add_column("Denominator / note", overflow="fold")
+    t.add_row("Generated", str(rep.n_generated), f"all attempts; {rep.n_empty} empty")
+    t.add_row("Validity", f"{rep.validity:.1%}", f"{rep.n_valid} / {rep.n_generated} attempts; invalid: " + ", ".join(f"{k} ×{v}" for k, v in rep.invalid_reasons.items()))
+    t.add_row(f"Uniqueness ({rep.identity_level})", f"{rep.uniqueness:.1%}" if rep.n_valid else "undefined", f"{rep.n_unique} / {rep.n_valid} valid outputs")
+    if rep.uniqueness_by_level:
+        t.add_row("  by level", ", ".join(f"{k} {v:.0%}" for k, v in rep.uniqueness_by_level.items()), "levels nest; not independent")
+    if rep.novelty is not None:
+        t.add_row("Novelty", f"{rep.novelty:.1%}", f"{rep.n_novel} / {rep.n_unique} unique valid, against {', '.join(rep.reference_sets)} ({rep.n_reference} records)")
+        t.add_row("  by level", ", ".join(f"{k} {v:.0%}" for k, v in rep.novelty_by_level.items()), "claimed only against the sets listed")
+    if rep.scaffold_diversity is not None:
+        t.add_row("Scaffold diversity", f"{rep.scaffold_diversity:.2f}", f"{rep.n_scaffolds} cyclic scaffolds over {rep.n_unique} unique valid")
+    if rep.nearest_neighbour_similarity:
+        t.add_row("Nearest reference", escape(str(rep.nearest_neighbour_similarity)), f"Tanimoto, {rep.fingerprint}")
+    if rep.alerts_by_set:
+        t.add_row("Alert matches", str(sum(1 for m in rep.molecules if m.alerts)), f"of {rep.alert_denominator} valid; top: " + ", ".join(f"{k} ×{v}" for k, v in list(rep.alerts_by_set.items())[:4]))
+    for name, n in rep.constraints.items():
+        t.add_row(f"Constraint {name}", f"{n}/{rep.n_valid}", "valid outputs satisfying it")
+    if rep.repaired_report:
+        t.add_row("Repaired candidates", str(rep.n_repaired), f"evaluated separately: validity {rep.repaired_report.validity:.0%}, uniqueness {rep.repaired_report.uniqueness:.0%}")
+    console.print(t)
+    if rep.undefined:
+        console.print(f"  [yellow]undefined for this input:[/yellow] {', '.join(rep.undefined)}")
+    if rep.descriptor_summary:
+        console.print("  " + " · ".join(f"{k}: median {v['median']:g} [{v['min']:g}, {v['max']:g}]" for k, v in rep.descriptor_summary.items()))
+    console.print(f"  [dim]{escape(rep.note)}[/dim]")
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with open(output, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh); w.writerow(["index", "input", "valid", "reason", "smiles", "duplicate_of", "novel", "nearest_reference", "nearest_similarity", "scaffold", "alerts", "constraints_failed", "repair_candidate"])
+            for m in rep.molecules:
+                w.writerow([m.index, m.input, m.valid, m.reason or "", m.smiles or "", "" if m.duplicate_of is None else m.duplicate_of,
+                            "" if m.novel is None else m.novel, m.nearest_reference or "", "" if m.nearest_similarity is None else m.nearest_similarity,
+                            m.scaffold or "", ";".join(m.alerts), ";".join(m.constraints_failed), m.repair_candidate or ""])
+        console.print(f"[green]Saved:[/green] {output}")
+    if json_out:
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        json_out.write_text(json.dumps(rep.model_dump(), indent=2, default=str)); console.print(f"[green]Saved:[/green] {json_out}")
+    raise typer.Exit(code=0)
