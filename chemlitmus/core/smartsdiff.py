@@ -29,7 +29,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 from pydantic import BaseModel, Field
 
-from chemlitmus.core.smartsaudit import PREPARATIONS, _build_library, _match_vector, load_patterns, load_reference_library, prepare_molecule
+from chemlitmus.core.smartsaudit import PREPARATIONS, _build_library, load_patterns, load_reference_library, prepare_molecule_status
 
 try:
     from rdkit import Chem, RDLogger
@@ -55,6 +55,7 @@ class PatternSide(BaseModel):
     rule_set: Optional[str] = None
     parses: bool = True
     n_hits: int = 0
+    match_error: Optional[str] = None
 
 
 class PatternDiff(BaseModel):
@@ -79,7 +80,8 @@ class SmartsDiffResult(BaseModel):
     source_a: str
     source_b: str
     library_source: str
-    n_molecules: int
+    n_molecules: int = Field(description="Reference molecules that reached the requested preparation and were compared.")
+    n_unevaluated: int = Field(0, description="Reference molecules excluded because the preparation failed for them.")
     preparation: str
     n_patterns_a: int
     n_patterns_b: int
@@ -137,23 +139,31 @@ def load_side(source: str | Path) -> Tuple[List[PatternSide], List[Optional["Che
 def _hit_matrix(sides: List[PatternSide], queries, catalog, mols: Sequence["Chem.Mol"], preparation: str) -> np.ndarray:
     n = len(mols)
     M = np.zeros((len(sides), n), dtype=bool)
+    evaluated = np.ones(n, dtype=bool)
     if catalog is not None:
         index = {}
         for i in range(catalog.GetNumEntries()):
             index.setdefault(catalog.GetEntry(i).GetDescription(), []).append(i)
         for j, m in enumerate(mols):
-            pm = prepare_molecule(m, preparation)
+            pm, status = prepare_molecule_status(m, preparation)
+            if pm is None:
+                evaluated[j] = False
+                continue
             for e in catalog.GetMatches(pm):
                 for i in index.get(e.GetDescription(), []):
                     M[i, j] = True
     else:
         lib = _build_library(mols, preparation)
+        evaluated[:] = lib.evaluated
         for i, q in enumerate(queries):
             if q is not None:
-                M[i] = _match_vector(lib, q, n)
+                M[i], err = lib.match(q)
+                if err:
+                    sides[i].parses = False
+                    sides[i].match_error = err
     for i, s in enumerate(sides):
         s.n_hits = int(M[i].sum())
-    return M
+    return M, evaluated
 
 
 # --------------------------------------------------------------------------------------------- pairing
@@ -233,8 +243,14 @@ def diff_smarts(
     smiles = [Chem.MolToSmiles(m) for m in mols]
     sa, qa, ca = load_side(source_a)
     sb, qb, cb = load_side(source_b)
-    Ma = _hit_matrix(sa, qa, ca, mols, preparation)
-    Mb = _hit_matrix(sb, qb, cb, mols, preparation)
+    Ma, eva = _hit_matrix(sa, qa, ca, mols, preparation)
+    Mb, evb = _hit_matrix(sb, qb, cb, mols, preparation)
+    evaluated = eva & evb
+    n_unevaluated = int((~evaluated).sum())
+    # molecules that could not be prepared are excluded from every comparison below
+    Ma = Ma[:, evaluated]; Mb = Mb[:, evaluated]
+    smiles = [s for s, ok in zip(smiles, evaluated) if ok]
+    mols = [m for m, ok in zip(mols, evaluated) if ok]
 
     diffs: List[PatternDiff] = []
     for i, j, by in _pair(sa, sb, Ma, Mb):
@@ -265,7 +281,7 @@ def diff_smarts(
     fa = Ma.any(axis=0) if len(sa) else np.zeros(len(mols), bool)
     fb = Mb.any(axis=0) if len(sb) else np.zeros(len(mols), bool)
     res = SmartsDiffResult(
-        source_a=str(source_a), source_b=str(source_b), library_source=lib_src, n_molecules=len(mols), preparation=preparation,
+        source_a=str(source_a), source_b=str(source_b), library_source=lib_src, n_molecules=len(mols), n_unevaluated=n_unevaluated, preparation=preparation,
         n_patterns_a=len(sa), n_patterns_b=len(sb), n_paired=sum(1 for d in diffs if d.paired_by),
         paired_by=dict(Counter(d.paired_by for d in diffs if d.paired_by)),
         text_counts=dict(Counter(d.text_status for d in diffs if d.text_status)),

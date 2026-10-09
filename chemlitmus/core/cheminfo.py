@@ -3,7 +3,7 @@
 All functions are fully offline and powered by RDKit. No network access is required.
 """
 
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -17,8 +17,24 @@ except ImportError:
     _RDKIT_AVAILABLE = False
 
 
+from chemlitmus.core.smiles import SmilesParseError, mol_from_smiles
+
+
+def _safe_parse(smiles):
+    """One SMILES -> Mol or None; internal whitespace is rejected rather than truncated."""
+    try:
+        return mol_from_smiles(smiles)
+    except SmilesParseError:
+        return None
+
+
+
 class FingerprintResult(BaseModel):
-    """Result model for a single molecular fingerprint computation."""
+    """Result model for a single molecular fingerprint computation.
+
+    The ``algorithm``/``radius``/``atom_invariants``/``representation``/``chirality`` fields
+    describe the computation actually performed, so a name such as ``fcfp4`` is checkable.
+    """
 
     smiles: str
     fingerprint_type: str
@@ -27,6 +43,11 @@ class FingerprintResult(BaseModel):
     density: float
     bit_string: str
     hex_string: str
+    algorithm: str = Field("", description="morgan | rdkit | atompair | torsion | maccs")
+    radius: Optional[int] = Field(None, description="Morgan radius (ecfp4/fcfp4 = 2, ecfp6 = 3).")
+    atom_invariants: Optional[str] = Field(None, description="'connectivity' (ECFP) or 'feature' (FCFP) for Morgan fingerprints.")
+    representation: str = Field("bit", description="bit vector; counts are not produced.")
+    chirality: bool = Field(False, description="Whether chirality was folded into the invariants.")
 
 
 class RuleResult(BaseModel):
@@ -75,6 +96,17 @@ class SimilarityResult(BaseModel):
 
 _VALID_FP_TYPES = {"ecfp4", "ecfp6", "fcfp4", "maccs", "rdkit", "atompair", "torsion"}
 
+FP_DESCRIPTIONS: Dict[str, Dict[str, object]] = {
+    "ecfp4": {"algorithm": "morgan", "radius": 2, "atom_invariants": "connectivity"},
+    "ecfp6": {"algorithm": "morgan", "radius": 3, "atom_invariants": "connectivity"},
+    "fcfp4": {"algorithm": "morgan", "radius": 2, "atom_invariants": "feature"},
+    "rdkit": {"algorithm": "rdkit"},
+    "atompair": {"algorithm": "atompair"},
+    "torsion": {"algorithm": "torsion"},
+    "maccs": {"algorithm": "maccs"},
+}
+"""What each fingerprint name computes; bit vectors, chirality off, fpSize = n_bits (MACCS fixed 167)."""
+
 
 
 
@@ -94,7 +126,11 @@ def _get_fp_generator(fp_type: str, n_bits: int = 2048):
     elif t == "ecfp6":
         return rdFingerprintGenerator.GetMorganGenerator(radius=3, fpSize=n_bits)
     elif t == "fcfp4":
-        return rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=n_bits)
+        # Feature-class Morgan: pharmacophoric atom invariants (donor, acceptor, aromatic, halogen,
+        # basic, acidic) instead of connectivity invariants. This is what "FCFP" means.
+        return rdFingerprintGenerator.GetMorganGenerator(
+            radius=2, fpSize=n_bits, atomInvariantsGenerator=rdFingerprintGenerator.GetMorganFeatureAtomInvGen()
+        )
     elif t == "rdkit":
         return rdFingerprintGenerator.GetRDKitFPGenerator(fpSize=n_bits)
     elif t == "atompair":
@@ -144,19 +180,21 @@ def compute_fingerprint(
     """
     if not _RDKIT_AVAILABLE:
         raise RuntimeError("RDKit is required. Install with: pip install rdkit")
-    mol = Chem.MolFromSmiles(smiles)
+    mol = _safe_parse(smiles)
     if mol is None:
         raise ValueError(f"Invalid SMILES string: {smiles!r}")
 
     def _build(t: str) -> FingerprintResult:
         fp, actual_bits = _compute_single_fp(mol, t, n_bits)
         on = fp.GetNumOnBits()
+        meta = FP_DESCRIPTIONS[t]
         return FingerprintResult(
             smiles=smiles,
             fingerprint_type=t,
             n_bits=actual_bits,
             n_on_bits=on,
             density=round(on / actual_bits, 6) if actual_bits else 0.0,
+            algorithm=meta["algorithm"], radius=meta.get("radius"), atom_invariants=meta.get("atom_invariants"),
             bit_string=fp.ToBitString(),
             hex_string=_fp_to_hex(fp),
         )
@@ -210,7 +248,7 @@ def apply_filters(
     if preparation not in PREPARATIONS:
         raise ValueError(f"Unknown preparation {preparation!r}. Valid options: {PREPARATIONS}")
 
-    mol = Chem.MolFromSmiles(smiles)
+    mol = _safe_parse(smiles)
     if mol is None:
         return FilterResult(smiles=smiles, error="Invalid SMILES: could not be parsed by RDKit.", preparation=preparation)
 
@@ -346,7 +384,7 @@ def compute_similarity(
     if fp_type not in _VALID_FP_TYPES:
         raise ValueError(f"Unknown fp_type: {fp_type!r}. Valid: {sorted(_VALID_FP_TYPES)}")
 
-    query_mol = Chem.MolFromSmiles(query_smiles)
+    query_mol = _safe_parse(query_smiles)
     if query_mol is None:
         raise ValueError(f"Invalid query SMILES: {query_smiles!r}")
 
@@ -356,7 +394,7 @@ def compute_similarity(
     for lib_smi in library:
         if not lib_smi or not lib_smi.strip():
             continue
-        lib_mol = Chem.MolFromSmiles(lib_smi.strip())
+        lib_mol = _safe_parse(lib_smi)
         if lib_mol is None:
             continue
         lib_fp, _ = _compute_single_fp(lib_mol, fp_type, n_bits)
@@ -413,7 +451,7 @@ def substructure_search(
         if q_mol is None:
             raise ValueError(f"Invalid SMARTS query: {query}")
     else:
-        q_mol = Chem.MolFromSmiles(query)
+        q_mol = _safe_parse(query)
         if q_mol is None:
             raise ValueError(f"Invalid SMILES query: {query}")
 
@@ -421,7 +459,7 @@ def substructure_search(
     for smi in library:
         if not smi:
             continue
-        mol = Chem.MolFromSmiles(smi)
+        mol = _safe_parse(smi)
         if mol is None:
             continue
         mol = prepare_molecule(mol, preparation)

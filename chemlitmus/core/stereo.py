@@ -9,6 +9,18 @@ try:
 except ImportError:
     _RDKIT_AVAILABLE = False
 
+from chemlitmus.core.smiles import SmilesParseError, mol_from_smiles
+
+
+def _safe_parse(smiles):
+    """One SMILES -> Mol or None; internal whitespace is rejected rather than truncated."""
+    try:
+        return mol_from_smiles(smiles)
+    except SmilesParseError:
+        return None
+
+
+
 class StereoResult(BaseModel):
     input_smiles: str
     chiral_centers: List[Dict[str, Any]] = [] # e.g. [{"atom_idx": 1, "config": "R"}]
@@ -24,7 +36,7 @@ def analyze_stereochemistry(smiles: str) -> StereoResult:
     if not _RDKIT_AVAILABLE:
         return StereoResult(input_smiles=smiles, error="RDKit is not installed.")
 
-    mol = Chem.MolFromSmiles(smiles)
+    mol = _safe_parse(smiles)
     if mol is None:
         return StereoResult(input_smiles=smiles, error="Invalid SMILES string.")
 

@@ -23,6 +23,8 @@ try:
 except ImportError:
     _RDKIT_AVAILABLE = False
 
+from chemlitmus.core.smiles import SmilesParseError, mol_from_smiles  # noqa: E402
+
 # Valid step names (order matters for pipeline execution)
 VALID_STEPS: List[str] = ["fragment", "neutralize", "tautomer", "canonical"]
 
@@ -88,7 +90,10 @@ def standardize_smiles(
         steps_to_run = [s for s in VALID_STEPS if s in steps]
 
     # Parse molecule
-    mol = Chem.MolFromSmiles(smiles)
+    try:
+        mol = mol_from_smiles(smiles)
+    except SmilesParseError as exc:
+        return StandardizeResult(input_smiles=smiles, error=f"Invalid SMILES: {exc}")
     if mol is None:
         return StandardizeResult(
             input_smiles=smiles,
@@ -108,7 +113,7 @@ def standardize_smiles(
                 output_smiles=current_smiles,
                 steps_applied=[r.step for r in step_results],
                 step_results=step_results,
-                changed=current_smiles != Chem.MolToSmiles(Chem.MolFromSmiles(smiles)) if smiles else False,
+                changed=current_smiles != Chem.MolToSmiles(mol_from_smiles(smiles)) if smiles else False,
                 error=f"Step '{step_name}' failed: {exc}",
             )
 
@@ -121,7 +126,7 @@ def standardize_smiles(
             )
         )
 
-    original_canonical = Chem.MolToSmiles(Chem.MolFromSmiles(smiles))
+    original_canonical = Chem.MolToSmiles(mol_from_smiles(smiles))
     overall_changed = current_smiles != original_canonical
 
     return StandardizeResult(

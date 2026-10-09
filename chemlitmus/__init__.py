@@ -70,6 +70,10 @@ from chemlitmus.core.smartsaudit import (
     load_reference_library,
     prepare_molecule,
 )
+from chemlitmus.core.records import Issue, Record, RecordSet, SchemaError, read_records
+from chemlitmus.core.policy import ChemicalPolicy, RepairPolicy, SeverityPolicy, resolve_policy
+from chemlitmus.core.manifest import RunManifest, new_manifest
+from chemlitmus.core.smiles import SmilesParseError, mol_from_smiles, split_smiles_field
 from chemlitmus.core.smartsproof import CatalogueProof, PatternProof, ProofResult, SatisfiabilityResult, equivalent, prove_catalogue, satisfiable, subsumes
 from chemlitmus.core.smartsdiff import PatternDiff, RDKIT_CATALOGS, SmartsDiffResult, diff_smarts
 from chemlitmus.providers import (
@@ -208,6 +212,21 @@ def download_structure(
     return client.download_structure(cid, format, dimension, output_dir, force)
 
 __all__ = [
+    # Records, policy, provenance
+    "Record",
+    "RecordSet",
+    "Issue",
+    "SchemaError",
+    "read_records",
+    "ChemicalPolicy",
+    "RepairPolicy",
+    "SeverityPolicy",
+    "resolve_policy",
+    "RunManifest",
+    "new_manifest",
+    "SmilesParseError",
+    "mol_from_smiles",
+    "split_smiles_field",
     # SMARTS containment proofs
     "subsumes",
     "equivalent",

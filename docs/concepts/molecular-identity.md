@@ -45,7 +45,7 @@ nostereo                11,340              1,140
 skeleton                11,201              1,279
 ```
 
-Each step down the table is a question answered: 578 records are salt or charge variants of another record; a further 187 are tautomer variants; stereo variation accounts for 562; and so on. The groups table then shows each cluster with a `differs_by` list, so you can see *which* axis each duplicate lies on and act accordingly — dedupe salts but keep enantiomers, for instance.
+Each row answers one question on its own: at `parent`, 578 records share a parent with an earlier record; at `tautomer`, 765 do; at `nostereo`, 1,140. **The rows are not additive and the differences between consecutive rows are not counts of a single cause**: `tautomer` and `nostereo` are siblings below `parent`, so a record can be collapsed by both, and `skeleton` collapses everything either of them does. To learn *why* a particular group collapses, read its `differs_by` list in the groups table — it names each axis (salt form, tautomer, stereochemistry) that varies inside that group — and act per axis: dedupe salts but keep enantiomers, for instance. `formula` is listed for completeness; equal formulas identify a formula group, not a compound.
 
 ## Describing a pairwise difference
 

@@ -252,7 +252,7 @@ def test_cli_diff(tmp_path: Path):
 def test_cli_diagnose(tmp_path: Path):
     r = runner.invoke(app, ["diagnose", "C1CC(C"])
     assert r.exit_code == 2, r.output
-    assert "parentheses" in r.output and "Repaired" in r.output and "CCCC" in r.output
+    assert "parentheses" in r.output and "Candidate repair" in r.output and "CCCC" in r.output
     assert runner.invoke(app, ["diagnose", "CCO"]).exit_code == 0
 
     f = _write(tmp_path, "mixed.smi", ["CCO", "C1CC(C", "CN(C)(C)C", "c1cncc1"])

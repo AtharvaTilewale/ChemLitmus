@@ -95,7 +95,7 @@ def _print_diagnosis(d: SmilesDiagnosis) -> None:
             body.append(f"      → {p.suggestion}\n", style="dim")
     if d.repaired_smiles is not None:
         if d.repaired_is_valid:
-            body.append(f"\n  Repaired: {d.repaired_smiles}\n", style="green")
+            body.append(f"\n  Candidate repair (parses; not verified to be the intended molecule): {d.repaired_smiles}\n", style="green")
         else:
             body.append(f"\n  Attempted repair still invalid: {d.repaired_smiles}\n", style="red")
         for r in d.repairs_applied:
@@ -147,7 +147,7 @@ def diagnose_cmd(
     for c, n in sorted(by_cat.items(), key=lambda x: -x[1]):
         t.add_row(c, str(n))
     t.add_row("[bold]invalid total[/bold]", f"[bold]{len(invalid)}[/bold]")
-    t.add_row("repaired mechanically", str(repaired))
+    t.add_row("candidate repairs (mechanical, unverified)", str(repaired))
     t.add_row("valid", str(len(records) - len(invalid)))
     console.print(t)
 
@@ -161,7 +161,7 @@ def diagnose_cmd(
         output.parent.mkdir(parents=True, exist_ok=True)
         with open(output, "w", newline="", encoding="utf-8") as fh:
             w = csv.DictWriter(fh, fieldnames=["input_smiles", "is_valid", "canonical_smiles", "primary_category", "n_problems",
-                                               "problems", "positions", "suggestions", "repaired_smiles", "repaired_is_valid", "repairs_applied"])
+                                               "problems", "positions", "suggestions", "repaired_smiles", "repaired_is_valid", "repair_status", "repairs_applied"])
             w.writeheader()
             for d in (results if not only_invalid else invalid):
                 w.writerow({
@@ -170,7 +170,7 @@ def diagnose_cmd(
                     "problems": " | ".join(f"[{p.category}] {p.message}" for p in d.problems),
                     "positions": ";".join("" if p.position is None else str(p.position) for p in d.problems),
                     "suggestions": " | ".join(p.suggestion for p in d.problems if p.suggestion),
-                    "repaired_smiles": d.repaired_smiles or "", "repaired_is_valid": "" if d.repaired_is_valid is None else d.repaired_is_valid,
+                    "repaired_smiles": d.repaired_smiles or "", "repaired_is_valid": "" if d.repaired_is_valid is None else d.repaired_is_valid, "repair_status": d.repair_status,
                     "repairs_applied": " | ".join(d.repairs_applied),
                 })
         console.print(f"[green]Saved:[/green] {output}")

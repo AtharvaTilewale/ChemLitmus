@@ -18,6 +18,18 @@ except ImportError:
     _RDKIT_AVAILABLE = False
 
 
+from chemlitmus.core.smiles import SmilesParseError, mol_from_smiles
+
+
+def _safe_parse(smiles):
+    """One SMILES -> Mol or None; internal whitespace is rejected rather than truncated."""
+    try:
+        return mol_from_smiles(smiles)
+    except SmilesParseError:
+        return None
+
+
+
 class TautomerResult(BaseModel):
     """Result model for tautomer enumeration."""
 
@@ -52,7 +64,7 @@ def enumerate_tautomers(
             error="RDKit is not installed. Install it with: pip install rdkit",
         )
 
-    mol = Chem.MolFromSmiles(smiles)
+    mol = _safe_parse(smiles)
     if mol is None:
         return TautomerResult(
             input_smiles=smiles,

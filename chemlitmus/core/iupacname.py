@@ -27,6 +27,18 @@ except ImportError:
     _RDKIT_AVAILABLE = False
 
 
+from chemlitmus.core.smiles import SmilesParseError, mol_from_smiles
+
+
+def _safe_parse(smiles):
+    """One SMILES -> Mol or None; internal whitespace is rejected rather than truncated."""
+    try:
+        return mol_from_smiles(smiles)
+    except SmilesParseError:
+        return None
+
+
+
 class IUPACResult(BaseModel):
     """Result of IUPAC name generation from a SMILES string."""
 
@@ -65,7 +77,7 @@ def get_iupac_name(
         )
 
     # Parse and validate SMILES
-    mol = Chem.MolFromSmiles(smiles)
+    mol = _safe_parse(smiles)
     if mol is None:
         return IUPACResult(
             input_smiles=smiles,

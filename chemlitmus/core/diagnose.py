@@ -79,9 +79,10 @@ class SmilesDiagnosis(BaseModel):
     is_valid: bool
     canonical_smiles: Optional[str] = None
     problems: List[SmilesProblem] = Field(default_factory=list)
-    repaired_smiles: Optional[str] = Field(None, description="Result of mechanical repair, if one was attempted.")
+    repaired_smiles: Optional[str] = Field(None, description="Candidate produced by mechanical repair, if one was attempted. It parses; it is not known to be the intended molecule.")
     repaired_is_valid: Optional[bool] = None
-    repairs_applied: List[str] = Field(default_factory=list)
+    repairs_applied: List[str] = Field(default_factory=list, description="The exact edits, in order.")
+    repair_status: str = Field("not attempted", description="'not attempted' | 'not needed' | 'candidate' (parses, unverified) | 'failed' (still invalid). A candidate is never applied without an explicit repair policy.")
 
     @property
     def primary_category(self) -> Optional[str]:
@@ -421,7 +422,7 @@ def diagnose_smiles(smiles: str, try_repair: bool = True) -> SmilesDiagnosis:
     mol = Chem.MolFromSmiles(s)
     inner = s.strip()
     if mol is not None and not any(ch.isspace() for ch in inner):
-        return SmilesDiagnosis(input_smiles=s, is_valid=True, canonical_smiles=Chem.MolToSmiles(mol))
+        return SmilesDiagnosis(input_smiles=s, is_valid=True, canonical_smiles=Chem.MolToSmiles(mol), repair_status="not needed")
 
     problems: List[SmilesProblem] = []
     if mol is not None:
@@ -444,6 +445,9 @@ def diagnose_smiles(smiles: str, try_repair: bool = True) -> SmilesDiagnosis:
                 diag.repaired_smiles = Chem.MolToSmiles(rm) if rm is not None else repaired
                 diag.repaired_is_valid = rm is not None
                 diag.repairs_applied = applied
+                diag.repair_status = "candidate" if rm is not None else "failed"
+            else:
+                diag.repair_status = "failed"
         return diag
 
     problems += _check_characters(s)

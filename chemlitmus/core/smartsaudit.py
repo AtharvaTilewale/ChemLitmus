@@ -72,6 +72,7 @@ class PatternAudit(BaseModel):
     # compile
     parses: bool = False
     parse_error: Optional[str] = None
+    match_error: Optional[str] = Field(None, description="Substructure matching raised for this pattern; hit counts are unknown, not zero.")
     n_query_atoms: int = 0
     requires_explicit_h: bool = Field(
         False, description="Pattern contains a hydrogen query atom, so it can only match molecules prepared with explicit hydrogens."
@@ -115,6 +116,8 @@ class PatternAudit(BaseModel):
             out.append("over-broad")
         if self.never_fires:
             out.append("dead:" + (self.dead_verdict or "unknown").replace(" ", "-"))
+        if self.match_error:
+            out.append("match-failed")
         if self.duplicate_of is not None:
             out.append("duplicate")
         if self.equivalent_to:
@@ -149,6 +152,16 @@ class SensitivitySummary(BaseModel):
     n_sensitive_patterns: int = 0
 
 
+class PreparationStatus(BaseModel):
+    """Whether the reference molecules reached the requested preparation state."""
+
+    preparation: str
+    n_molecules: int
+    n_evaluated: int
+    n_failed: int = 0
+    failures: Dict[str, int] = Field(default_factory=dict, description="Failure reason -> count.")
+
+
 class SmartsAuditResult(BaseModel):
     """Complete result of auditing a SMARTS pattern set."""
 
@@ -159,6 +172,8 @@ class SmartsAuditResult(BaseModel):
     breadth_threshold: float
     patterns: List[PatternAudit]
     sensitivity: Optional[SensitivitySummary] = None
+    preparation_status: Dict[str, PreparationStatus] = Field(default_factory=dict, description="Per preparation: how many reference molecules were evaluated vs. failed preparation. Hit counts are over evaluated molecules only.")
+    n_match_failures: int = Field(0, description="Patterns for which matching raised; their hit counts are unknown.")
     elapsed_seconds: float = 0.0
     error: Optional[str] = None
 
@@ -222,6 +237,7 @@ class SmartsAuditResult(BaseModel):
                 "smarts": p.smarts,
                 "parses": p.parses,
                 "parse_error": p.parse_error or "",
+                "match_error": p.match_error or "",
                 "n_query_atoms": p.n_query_atoms,
                 "requires_explicit_h": p.requires_explicit_h,
                 "has_recursive_smarts": p.has_recursive_smarts,
@@ -266,6 +282,8 @@ class SmartsExplanation(BaseModel):
     has_recursive_smarts: bool = False
     atoms: List[AtomExplanation] = Field(default_factory=list)
     hits_by_preparation: Dict[str, int] = Field(default_factory=dict)
+    match_errors: Dict[str, str] = Field(default_factory=dict, description="Preparation -> matching error; the hit count for that preparation is unknown.")
+    preparation_failures: Dict[str, int] = Field(default_factory=dict, description="Preparation -> molecules that could not be prepared (unevaluated).")
     n_molecules: int = 0
     example_matches: List[str] = Field(default_factory=list)
     never_matching_atoms: List[int] = Field(default_factory=list)
@@ -393,39 +411,109 @@ def load_reference_library(path: Optional[Path | str] = None, max_molecules: Opt
     return mols, source
 
 
-def prepare_molecule(mol: "Chem.Mol", preparation: str) -> "Chem.Mol":
-    """Return a copy of ``mol`` in the requested preparation state."""
-    if preparation == "implicit-h":
+class PreparationError(RuntimeError):
+    """The requested molecule preparation could not be achieved."""
+
+
+def prepare_molecule(mol: "Chem.Mol", preparation: str, *, strict: bool = False) -> "Chem.Mol":
+    """Return a copy of ``mol`` in the requested preparation state.
+
+    With ``strict=True`` a preparation that cannot be achieved (a ring RDKit cannot Kekulize)
+    raises :class:`PreparationError`. With ``strict=False`` (the historical behaviour) the
+    original molecule is returned unchanged — callers that need to *know* whether the requested
+    state was reached must use :func:`prepare_molecule_status`.
+    """
+    prepared, status = prepare_molecule_status(mol, preparation)
+    if prepared is None:
+        if strict:
+            raise PreparationError(status)
         return Chem.Mol(mol)
+    return prepared
+
+
+def prepare_molecule_status(mol: "Chem.Mol", preparation: str) -> Tuple[Optional["Chem.Mol"], str]:
+    """``(prepared_mol, "ok")`` or ``(None, "<reason>")`` when the preparation failed."""
+    if preparation == "implicit-h":
+        return Chem.Mol(mol), "ok"
     if preparation == "explicit-h":
-        return Chem.AddHs(mol)
+        try:
+            return Chem.AddHs(mol), "ok"
+        except Exception as exc:  # pragma: no cover - AddHs rarely fails
+            return None, f"explicit-h failed: {exc}"
     if preparation == "kekule":
         k = Chem.Mol(mol)
         try:
             Chem.Kekulize(k, clearAromaticFlags=True)
-        except Exception:
-            return Chem.Mol(mol)
-        return k
+        except Exception as exc:
+            return None, f"kekulization failed: {type(exc).__name__}"
+        return k, "ok"
     raise ValueError(f"Unknown preparation {preparation!r}. Valid: {PREPARATIONS}")
 
 
-def _build_library(mols: Sequence["Chem.Mol"], preparation: str) -> "_ssl.SubstructLibrary":
-    # Pattern fingerprints pre-screen candidates before the full match. The fingerprint is
-    # computed on the prepared molecule, so screening is consistent for every preparation.
-    lib = _ssl.SubstructLibrary(_ssl.MolHolder(), _ssl.PatternHolder())
-    for m in mols:
-        lib.AddMol(prepare_molecule(m, preparation))
-    return lib
+class PreparedLibrary:
+    """A SubstructLibrary plus the accounting of which molecules reached the requested state.
+
+    ``evaluated`` is a boolean mask over the *input* molecule list; a molecule whose preparation
+    failed is absent from the library and ``False`` in the mask, so it is neither a hit nor a
+    non-hit — it is unevaluated.
+    """
+
+    def __init__(self, mols: Sequence["Chem.Mol"], preparation: str):
+        self.preparation = preparation
+        self.lib = _ssl.SubstructLibrary(_ssl.MolHolder(), _ssl.PatternHolder())
+        self.evaluated = np.zeros(len(mols), dtype=bool)
+        self.failures: Dict[str, int] = {}
+        self._lib_to_input: List[int] = []
+        for j, m in enumerate(mols):
+            prepared, status = prepare_molecule_status(m, preparation)
+            if prepared is None:
+                self.failures[status] = self.failures.get(status, 0) + 1
+                continue
+            self.lib.AddMol(prepared)
+            self.evaluated[j] = True
+            self._lib_to_input.append(j)
+        self._map = np.asarray(self._lib_to_input, dtype=np.int64)
+
+    @property
+    def n_evaluated(self) -> int:
+        return int(self.evaluated.sum())
+
+    @property
+    def n_failed(self) -> int:
+        return int((~self.evaluated).sum())
+
+    def match(self, query: "Chem.Mol") -> Tuple["np.ndarray", Optional[str]]:
+        """Hit mask over the input list and ``None``, or an all-false mask and the error text."""
+        v = np.zeros(len(self.evaluated), dtype=bool)
+        try:
+            idx = self.lib.GetMatches(query, numThreads=-1, maxResults=-1)
+        except Exception as exc:
+            return v, f"{type(exc).__name__}: {exc}"
+        if len(idx):
+            v[self._map[np.fromiter(idx, dtype=np.int64)]] = True
+        return v, None
+
+    def GetMatches(self, query, **kwargs):
+        """Library-compatible accessor returning *input* indices; raises on matching errors."""
+        v, err = self.match(query)
+        if err:
+            raise RuntimeError(err)
+        return list(np.flatnonzero(v))
 
 
-def _match_vector(lib: "_ssl.SubstructLibrary", query: "Chem.Mol", n: int) -> "np.ndarray":
-    v = np.zeros(n, dtype=bool)
-    try:
-        idx = lib.GetMatches(query, numThreads=-1, maxResults=-1)
-    except Exception:
-        return v
-    if len(idx):
-        v[np.fromiter(idx, dtype=np.int64)] = True
+def _n_matches(lib: PreparedLibrary, query: "Chem.Mol") -> int:
+    """Number of evaluated molecules matching ``query``; -1 when matching itself fails (unknown)."""
+    v, err = lib.match(query)
+    return -1 if err else int(v.sum())
+
+
+def _build_library(mols: Sequence["Chem.Mol"], preparation: str) -> PreparedLibrary:
+    return PreparedLibrary(mols, preparation)
+
+
+def _match_vector(lib: PreparedLibrary, query: "Chem.Mol", n: int) -> "np.ndarray":
+    """Hit mask only (legacy helper). Use ``lib.match`` to also receive the error, if any."""
+    v, _ = lib.match(query)
     return v
 
 
@@ -553,22 +641,30 @@ def audit_smarts(
 
     need_matrix = requested & {"breadth", "dead", "redundancy", "sensitivity"}
     matrices: Dict[str, "np.ndarray"] = {}
+    prep_status: Dict[str, PreparationStatus] = {}
     if need_matrix and n_mol:
         preps_to_run = preps if "sensitivity" in requested else [default_prep]
+        evaluated: Dict[str, "np.ndarray"] = {}
         for prep in preps_to_run:
             lib = _build_library(mols, prep)
+            prep_status[prep] = PreparationStatus(preparation=prep, n_molecules=n_mol, n_evaluated=lib.n_evaluated,
+                                                  n_failed=lib.n_failed, failures=dict(lib.failures))
+            evaluated[prep] = lib.evaluated
             M = np.zeros((len(records), n_mol), dtype=bool)
             for i, q in enumerate(queries):
                 if q is not None:
-                    M[i] = _match_vector(lib, q, n_mol)
+                    M[i], err = lib.match(q)
+                    if err and records[i].match_error is None:
+                        records[i].match_error = f"{prep}: {err}"
             matrices[prep] = M
         M0 = matrices[default_prep]
         hits0 = M0.sum(axis=1)
+        n_eval0 = max(int(evaluated[default_prep].sum()), 1)
 
         for rec, h in zip(records, hits0):
-            if rec.parses:
+            if rec.parses and rec.match_error is None:
                 rec.n_hits = int(h)
-                rec.hit_fraction = float(h) / n_mol
+                rec.hit_fraction = float(h) / n_eval0
                 rec.hits_by_preparation[default_prep] = int(h)
 
         # ---- breadth -----------------------------------------------------------------------
@@ -583,7 +679,7 @@ def audit_smarts(
             sample_mols = [mols[j] for j in sample_idx]
             sample_libs: Dict[str, "_ssl.SubstructLibrary"] = {}
             for rec, q in zip(records, queries):
-                if not rec.parses or rec.n_hits:
+                if not rec.parses or rec.match_error or rec.n_hits:
                     continue
                 rec.never_fires = True
                 # dead under the default preparation but alive under another one: that is a
@@ -603,7 +699,7 @@ def audit_smarts(
                 for ai in range(q.GetNumAtoms()):
                     sub = _atom_subquery(q, ai)
                     try:
-                        if len(sample_lib.GetMatches(sub, numThreads=-1, maxResults=1)) == 0:
+                        if _n_matches(sample_lib, sub) == 0:
                             bad_atoms.append(ai)
                     except Exception:
                         bad_atoms.append(ai)
@@ -654,15 +750,16 @@ def audit_smarts(
                 M = matrices[prep]
                 hits = M.sum(axis=1)
                 for rec, h in zip(records, hits):
-                    if rec.parses:
+                    if rec.parses and rec.match_error is None:
                         rec.hits_by_preparation[prep] = int(h)
                 summary.compounds_flagged[prep] = int(M.any(axis=0).sum())
                 summary.total_hits[prep] = int(M.sum())
                 summary.patterns_firing[prep] = int((hits > 0).sum())
                 if prep != default_prep:
-                    summary.verdict_flips[prep] = int((M.any(axis=0) != flagged0).sum())
+                    both = evaluated[prep] & evaluated[default_prep]
+                    summary.verdict_flips[prep] = int(((M.any(axis=0) != flagged0) & both).sum())
             for rec in records:
-                if rec.parses and len(set(rec.hits_by_preparation.values())) > 1:
+                if rec.parses and rec.match_error is None and len(set(rec.hits_by_preparation.values())) > 1:
                     rec.preparation_sensitive = True
             summary.n_sensitive_patterns = sum(1 for r in records if r.preparation_sensitive)
         else:
@@ -689,6 +786,8 @@ def audit_smarts(
         breadth_threshold=breadth_threshold,
         patterns=records,
         sensitivity=summary,
+        preparation_status=prep_status,
+        n_match_failures=sum(1 for r in records if r.match_error),
         elapsed_seconds=round(time.time() - t0, 3),
     )
 
@@ -734,7 +833,7 @@ def explain_smarts(
     for a in q.GetAtoms():
         sub = _atom_subquery(q, a.GetIdx())
         try:
-            n = len(atom_lib.GetMatches(sub, numThreads=-1, maxResults=-1))
+            n = _n_matches(atom_lib, sub)
         except Exception:
             n = 0
         exp.atoms.append(AtomExplanation(
@@ -746,11 +845,12 @@ def explain_smarts(
 
     for prep in preps:
         lib = _build_library(mols, prep)
-        try:
-            idx = list(lib.GetMatches(q, numThreads=-1, maxResults=-1))
-        except Exception:
-            idx = []
+        v, err = lib.match(q)
+        if err:
+            exp.match_errors[prep] = err
+        idx = list(np.flatnonzero(v))
         exp.hits_by_preparation[prep] = len(idx)
+        exp.preparation_failures[prep] = lib.n_failed
         if prep == preps[0] or (not exp.example_matches and idx):
             exp.example_matches = [Chem.MolToSmiles(mols[j]) for j in idx[:n_examples]]
     return exp

@@ -30,6 +30,59 @@ class SMILESValidationResult(BaseModel):
     error_message: Optional[str] = None
 
 
+class SmilesParseError(ValueError):
+    """Raised by :func:`mol_from_smiles` when a structure field cannot be accepted as one SMILES."""
+
+
+def split_smiles_field(text: str) -> tuple[str, Optional[str]]:
+    """Split a ``.smi``-style line into ``(smiles, name)``.
+
+    Only call this for formats that *define* a whitespace-separated name (``.smi``). A structure
+    column in a table is a single SMILES; use :func:`mol_from_smiles` on it directly.
+    """
+    parts = text.strip().split(None, 1)
+    if not parts:
+        return "", None
+    return parts[0], (parts[1].strip() or None) if len(parts) > 1 else None
+
+
+def is_cxsmiles(text: str) -> bool:
+    """A CXSMILES extension is a trailing ``|...|`` block separated from the SMILES by one space."""
+    s = text.strip()
+    return s.endswith("|") and " |" in s and s.count("|") == 2 and " " not in s.split(" |", 1)[0]
+
+
+def mol_from_smiles(smiles: str, *, sanitize: bool = True):
+    """Parse exactly one SMILES, refusing inputs RDKit would silently truncate.
+
+    ``Chem.MolFromSmiles("CC O")`` parses ethane and treats ``O`` as a title. Every
+    structure-consuming operation in ChemLitmus goes through this function instead, so a field
+    with internal whitespace is an error, not a different molecule. The one sanctioned form of
+    whitespace is a CXSMILES extension block (``CCO |$;;R1$|``), which is parsed as such.
+
+    Returns the molecule, or ``None`` when RDKit rejects the string. Raises
+    :class:`SmilesParseError` for empty input and for internal whitespace that is not CXSMILES.
+    """
+    if smiles is None:
+        raise SmilesParseError("empty structure field")
+    s = smiles.strip()
+    if not s:
+        raise SmilesParseError("empty structure field")
+    if any(ch.isspace() for ch in s):
+        if is_cxsmiles(s):
+            params = Chem.SmilesParserParams()
+            params.allowCXSMILES = True
+            params.sanitize = sanitize
+            return Chem.MolFromSmiles(s, params)
+        raise SmilesParseError(
+            "internal whitespace: RDKit would parse only the first token and treat the rest as a name; "
+            "if the field is a '.smi' line, split it with split_smiles_field()"
+        )
+    params = Chem.SmilesParserParams()
+    params.sanitize = sanitize
+    return Chem.MolFromSmiles(s, params)
+
+
 def validate_smiles(smiles_str: str) -> SMILESValidationResult:
     """
     Validate and canonicalize a SMILES string, returning chemical descriptors.
