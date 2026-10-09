@@ -196,11 +196,15 @@ _MERGE_FIELDS = ("name", "smiles", "inchi", "inchikey", "formula", "molecular_we
 
 def _merge(records: List[CompoundRecord], query: str) -> CompoundRecord:
     base = CompoundRecord(source="merged", source_id=" + ".join(f"{r.source}:{r.source_id}" for r in records), query=query)
+    stamps = [r.retrieved_at for r in records if r.retrieved_at]
+    base.retrieved_at = max(stamps) if stamps else None
+    base.from_cache = all(r.from_cache for r in records) if records else False
     for f in _MERGE_FIELDS:
         for r in records:
             v = getattr(r, f)
             if v not in (None, "", []):
                 setattr(base, f, v)
+                base.field_provenance[f] = r.source      # which database each merged value came from
                 break
     syn: List[str] = []
     for r in records:

@@ -128,6 +128,8 @@ def smartsaudit_cmd(
     catalogue_version: Optional[str] = typer.Option(None, "--catalogue-version"),
     catalogue_source: Optional[str] = typer.Option(None, "--catalogue-source", help="URL or citation of the catalogue as distributed."),
     catalogue_licence: Optional[str] = typer.Option(None, "--catalogue-licence"),
+    cleanup: Optional[Path] = typer.Option(None, "--cleanup", help="Write reviewable cleanup proposals to this CSV. Nothing is ever removed automatically."),
+    allow_cross_set: bool = typer.Option(False, "--allow-cross-set-cleanup", help="Also recommend removing a rule whose only cover is in a different published set (loses provenance)."),
 ) -> None:
     """Audit a SMARTS pattern set (structural alerts, substructure filters) for defects.
 
@@ -216,6 +218,22 @@ def smartsaudit_cmd(
             writer.writeheader()
             writer.writerows(rows)
         console.print(f"[green]Per-pattern table saved to:[/green] {output}")
+    if cleanup:
+        import csv as _csv
+
+        from chemlitmus.core.cleanup import propose_cleanup
+
+        crep = propose_cleanup(res, allow_cross_set=allow_cross_set)
+        cleanup.parent.mkdir(parents=True, exist_ok=True)
+        with open(cleanup, "w", newline="", encoding="utf-8") as fh:
+            w = _csv.writer(fh)
+            w.writerow(["index", "name", "rule_set", "smarts", "action", "evidence", "covered_by", "covered_by_rule_sets", "crosses_rule_sets", "rationale"])
+            for prop in crep.proposals:
+                w.writerow([prop.index, prop.name or "", prop.rule_set or "", prop.smarts, prop.action, ";".join(prop.evidence), ";".join(prop.covered_by),
+                            ";".join(prop.covered_by_rule_sets), prop.crosses_rule_sets, prop.rationale])
+        console.print("  Cleanup proposals: " + ", ".join(f"{v} {k}" for k, v in crep.by_action.items()) + f" (of {crep.n_patterns} patterns)")
+        console.print(f"  [dim]{escape(crep.note)}[/dim]")
+        console.print(f"[green]Saved:[/green] {cleanup}")
     if json_out:
         json_out.parent.mkdir(parents=True, exist_ok=True)
         json_out.write_text(json.dumps(res.model_dump(), indent=2))

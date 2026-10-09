@@ -24,6 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `smartsaudit` now records **evidence labels** distinguishing exact text duplicates, observed hit-set identity/containment (claims about *this panel*), static proven containment/equivalence (universal), "not observed in this reference", "unsupported" and "undecided"; the **match semantics** (preparation, hydrogen handling, chirality ignored as RDKit does by default, RDKit version); **catalogue metadata** (`--catalogue-name/-version/-source/-licence`) with a content hash and the pattern count per rule set; a **reference-panel summary** (size, median heavy atoms, ring and charge fractions, element census); **example matches with matched atoms** and preparation-flip examples; and **`--holdout`** libraries, which name the patterns that never fire on the main panel but do fire elsewhere.
 - `benchmarks/alert_preparation_sensitivity.py` — a versioned recipe that reproduces the preparation-sensitivity figures per rule set with the catalogue checksum.
 
+### Also in this release
+
+- **Technical vs biological variability** — with a source/document column, each conflict group reports how much of its disagreement lies within one source (repeated entries from one experiment) and how much lies between sources; without that metadata the split is reported as `not determinable` rather than guessed.
+- **Leakage scope** — the report states that it measures contamination between the collections supplied to it and cannot see a model's pretraining corpus, so an absence of overlap is not evidence that a model never saw these compounds.
+- **Catalogue-cleanup proposals** (`smartsaudit --cleanup`) — each proposal carries its evidence and one of three actions: `recommended` (proof-backed, removal cannot change a verdict), `review` (observed on this panel only) or `keep provenance` (the only cover is in a different published set). Nothing is removed automatically.
+- **Provider retrieval provenance** — `CompoundRecord` now carries `retrieved_at`, `from_cache`, `cached_at` and (on merged records) `field_provenance` naming the source of every merged value, so stale cache data is distinguishable from a fresh fetch.
+- **Parquet input** as an optional extra (`pip install 'chemlitmus[parquet]'`).
+- Supported Python (3.10–3.13) and RDKit (>=2023.09) ranges documented, with the reason RDKit versions matter.
+
 ### Fixed
 
 - **`fcfp4` computed ECFP4.** Feature-class Morgan invariants are now used, verified against RDKit's own generator; `FingerprintResult` records `algorithm`, `radius`, `atom_invariants`, `representation` and `chirality`, so the name describes the computation.

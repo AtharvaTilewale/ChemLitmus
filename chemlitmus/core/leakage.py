@@ -72,6 +72,12 @@ class LeakageReport(BaseModel):
     pairs: List[PairReport]
     note: str = ("Overlap classes nest and are not additive. Scaffold and similarity relatedness are evaluation-design "
                  "diagnostics, not evidence of an invalid experiment. Formula matches are not identity.")
+    scope: str = Field(
+        ("Measured contamination between the collections supplied to this report. Unknown pretraining contamination is "
+         "out of scope: this method cannot see a model's training corpus, so an absence of overlap here is not evidence "
+         "that an evaluated model never saw these compounds."),
+        description="What this report establishes, and what it cannot.",
+    )
     record_issues: Dict[str, List[Dict[str, Any]]] = Field(default_factory=dict, description="record_id -> issue dicts (code + evidence) for the audit to attach.")
 
 

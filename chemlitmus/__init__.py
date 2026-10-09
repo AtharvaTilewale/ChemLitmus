@@ -76,6 +76,7 @@ from chemlitmus.core.generation import GenerationReport, evaluate_generated
 from chemlitmus.core.leakage import LeakageReport, leakage_report
 from chemlitmus.core.labels import LabelConflictReport, label_conflicts
 from chemlitmus.core.report import CleanPolicy, GatePolicy, GateResult, evaluate_gates, render_html, write_audit_outputs
+from chemlitmus.core.cleanup import CleanupProposal, CleanupReport, propose_cleanup
 from chemlitmus.core.records import Issue, Record, RecordSet, SchemaError, read_records
 from chemlitmus.core.policy import ChemicalPolicy, RepairPolicy, SeverityPolicy, resolve_policy
 from chemlitmus.core.manifest import RunManifest, new_manifest
@@ -237,6 +238,10 @@ __all__ = [
     "SplitReport",
     "evaluate_generated",
     "GenerationReport",
+    # Catalogue cleanup proposals
+    "propose_cleanup",
+    "CleanupReport",
+    "CleanupProposal",
     # Records, policy, provenance
     "Record",
     "RecordSet",

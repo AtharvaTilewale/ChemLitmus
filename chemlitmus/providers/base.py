@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import threading
 import time
+from datetime import datetime, timezone
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
@@ -52,6 +53,13 @@ class CompoundRecord(BaseModel):
     # Source-specific annotations that are worth carrying but do not fit the common schema
     extra: Dict[str, Any] = Field(default_factory=dict, description="Provider-specific fields (ChEMBL max_phase, ChEBI stars, KEGG pathways …).")
     cross_refs: Dict[str, str] = Field(default_factory=dict, description="Identifiers in other databases, keyed by provider.")
+
+    # Retrieval provenance
+    retrieved_at: Optional[str] = Field(None, description="UTC ISO-8601 timestamp of the network fetch that produced this record.")
+    from_cache: bool = Field(False, description="True when this copy came from the local SQLite cache rather than the network.")
+    cached_at: Optional[str] = Field(None, description="When the cached copy was first retrieved; equal to retrieved_at on a fresh fetch. Lets you tell stale data from fresh.")
+    source_version: Optional[str] = Field(None, description="Release or version string of the source record, where the database supplies one.")
+    field_provenance: Dict[str, str] = Field(default_factory=dict, description="Merged records only: field name -> the source it was taken from.")
 
     def summary_line(self) -> str:
         bits = [f"{self.source}:{self.source_id}"]
@@ -181,14 +189,20 @@ class Provider(ABC):
         if use_cache:
             cached = _cache_get(self.key, key)
             if cached is not None:
+                cached.from_cache = True
                 return cached
         self._local.deadline = deadline
         try:
             rec = self._lookup(query, query_type)
         finally:
             self._local.deadline = None
-        if rec is not None and use_cache:
-            _cache_put(self.key, rec, extra_keys=[key])
+        if rec is not None:
+            now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            rec.retrieved_at = now
+            rec.cached_at = rec.cached_at or now
+            rec.from_cache = False
+            if use_cache:
+                _cache_put(self.key, rec, extra_keys=[key])
         return rec
 
     def _cache_key(self, query: str, query_type: str) -> str:

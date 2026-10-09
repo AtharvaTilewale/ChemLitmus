@@ -6,7 +6,8 @@ processing status. Nothing is dropped: empty, malformed and unparseable entries 
 their positions and issues, so the accounting ``n_total == n_ok + n_empty + n_invalid + n_error``
 holds exactly and every downstream count can be reconciled against the input.
 
-Supported formats: CSV, TSV, XLSX/XLS, SMI (SMILES [whitespace name]), SDF. Column roles
+Supported formats: CSV, TSV, XLSX/XLS, SMI (SMILES [whitespace name]), SDF, and Parquet (optional,
+needs ``pyarrow``: ``pip install 'chemlitmus[parquet]'``). Column roles
 (structure, id, endpoint, units, relation, split, date, source) are selected explicitly or
 detected from recognised header names; a multi-column table with no recognised structure column
 is a schema error unless the caller asks for the first column (``ambiguous="first"``).
@@ -275,6 +276,47 @@ def _read_sdf(path: Path) -> RecordSet:
     return _finish(rs)
 
 
+def _read_parquet(path: Path, structure_column, id_column, roles, ambiguous) -> RecordSet:
+    """Optional format: needs ``pyarrow`` (``pip install chemlitmus[parquet]``)."""
+    import pandas as pd
+
+    try:
+        df = pd.read_parquet(path)
+    except ImportError as exc:  # pragma: no cover - depends on the environment
+        raise ImportError("Reading Parquet needs pyarrow: pip install 'chemlitmus[parquet]'") from exc
+    df = df.astype(str).fillna("")
+    columns = [str(c) for c in df.columns]
+    used = dict(detect_roles(columns))
+    for role, col in (roles or {}).items():
+        if col not in columns:
+            raise SchemaError(f"Column {col!r} for role {role!r} not found. Columns: {columns}")
+        used[role] = col
+    for role, col in (("structure", structure_column), ("id", id_column)):
+        if col:
+            if col not in columns:
+                raise SchemaError(f"Column {col!r} not found. Columns: {columns}")
+            used[role] = col
+    notes: List[str] = []
+    if "structure" not in used:
+        if len(columns) == 1 or ambiguous == "first":
+            used["structure"] = columns[0]
+            if len(columns) > 1:
+                notes.append(f"no recognised structure column; using {columns[0]!r} because ambiguous='first'")
+        else:
+            raise SchemaError(f"Cannot tell which of {columns} holds the structures. Pass structure_column=...")
+    rs = RecordSet(source_file=str(path), format="parquet", columns=columns, roles=used, notes=notes)
+    scol, idcol = used["structure"], used.get("id")
+    for i, row in enumerate(df.itertuples(index=False, name=None)):
+        d = dict(zip(columns, row))
+        rec = Record(record_id=f"r{i:06d}", position=i, source_file=str(path),
+                     source_id=(str(d[idcol]).strip() or None) if idcol else None,
+                     structure=(None if str(d.get(scol, "")).strip() == "" else str(d[scol])),
+                     fields={k: v for k, v in d.items() if k != scol})
+        _parse_structure(rec)
+        rs.records.append(rec)
+    return _finish(rs)
+
+
 def read_records(
     path: str | Path,
     structure_column: Optional[str] = None,
@@ -286,7 +328,7 @@ def read_records(
     """Read any supported file into a :class:`RecordSet`.
 
     Args:
-        path: CSV/TSV/TXT/XLSX/XLS/SMI/SDF file.
+        path: CSV/TSV/TXT/XLSX/XLS/SMI/SDF/Parquet file.
         structure_column: Column holding SMILES (tables). Overrides header detection.
         id_column: Column holding the source id.
         roles: Extra role -> column assignments (endpoint, units, relation, split, date, source, target).
@@ -306,6 +348,8 @@ def read_records(
         return _read_smi(p)
     if ext == ".sdf":
         return _read_sdf(p)
+    if ext in (".parquet", ".pq"):
+        return _read_parquet(p, structure_column, id_column, roles, ambiguous)
     raise ValueError(f"Unsupported file extension: {ext}")
 
 

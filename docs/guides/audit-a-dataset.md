@@ -124,6 +124,10 @@ at `parent`, `nostereo` and `skeleton`, not three times over. Beyond identity:
 * **within-split duplicates** are counted per split.
 * a **temporal** check runs when a date column is supplied, and says so when it cannot.
 
+The report's `scope` field states what it establishes: contamination *between the collections you
+supplied*. It cannot see a model's pretraining corpus, so no overlap here is not evidence that an
+evaluated model never saw these compounds.
+
 ## Label conflicts
 
 ```bash
@@ -136,6 +140,11 @@ converted with the conversion recorded (`10 uM -> 10000 nM -> p = 5.0`); the spr
 log10 units (tolerance 1.0 = ten-fold). Censored values (`<`, `>`, ranges) are kept as **bounds**
 and never averaged; measurements with no units are flagged and excluded from comparison. Nothing
 is resolved automatically — the suggested action is review, not "keep the most potent".
+
+With a `--source-column`, each conflict group also reports **where its disagreement lives**:
+`technical_spread` is the largest spread within one source (repeated entries from one experiment),
+`between_source_spread` the spread of per-source medians (independent measurements that disagree).
+Without source metadata the split is reported as `not determinable` rather than guessed.
 
 ## Then: splits and generated molecules
 

@@ -21,7 +21,7 @@ rs.n_total == rs.n_ok + rs.n_empty + rs.n_invalid + rs.n_unsupported + rs.n_erro
 rs.reconcile()                                                                      # asserts it
 ```
 
-Formats: CSV, TSV, TXT, XLSX/XLS, SMI, SDF. Column roles (structure, id, endpoint, units,
+Formats: CSV, TSV, TXT, XLSX/XLS, SMI, SDF, and Parquet (optional: `pip install 'chemlitmus[parquet]'`). Column roles (structure, id, endpoint, units,
 relation, split, date, source, target) are detected from recognised headers or named explicitly.
 A `.smi` line is defined to carry a name after whitespace; a structure *column* is not, so
 `CC O` in a CSV is an error rather than silently becoming ethane.

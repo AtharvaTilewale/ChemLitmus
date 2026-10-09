@@ -80,3 +80,22 @@ chemlitmus update             # upgrade (asks for confirmation)
 **Commands print raw `[hh:mm:ss] SMILES Parse Error` lines** — you are running an older ChemLitmus. Upgrade; RDKit's log stream is now captured and only shown by `diagnose`.
 
 **PubChem commands fail with 503 or time out** — PubChem rate-limits aggressively. ChemLitmus already throttles to about two requests per second and retries three times; if you are behind a shared IP, raise `CHEMLITMUS_RATE_LIMIT_DELAY` (see [Configuration](configuration.md)). Everything else in the tool works without network access.
+
+## Supported versions
+
+| Component | Supported |
+|---|---|
+| Python | 3.10 – 3.13 (tested in CI on all four; macOS and Windows on 3.12) |
+| RDKit | 2023.09 and newer (`RDKit>=2023.09.0`); developed against 2026.03 |
+
+RDKit releases can change aromaticity perception, standardisation and descriptor values. Every
+audit writes the RDKit version into `manifest.json`, so a change in results across versions is
+visible rather than silent. ChemLitmus does not pin RDKit's chemistry.
+
+## Optional extras
+
+```bash
+pip install 'chemlitmus[parquet]'   # Parquet input (pyarrow)
+pip install 'chemlitmus[docs]'      # build the documentation
+pip install 'chemlitmus[dev]'       # tests and linting
+```

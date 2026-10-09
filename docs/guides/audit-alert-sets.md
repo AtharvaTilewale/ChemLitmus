@@ -138,6 +138,19 @@ Each holdout library is matched separately, and the report names the patterns th
 the main panel but *do* fire on the holdout. "Never fires" is a statement about a panel, not about
 chemistry.
 
+## Propose a cleanup without losing provenance
+
+```bash
+chemlitmus smartsaudit alerts.csv --checks all,proof --cleanup proposals.csv
+```
+
+Each proposal names the pattern, what covers it, the evidence class, and one of three actions:
+**recommended** (backed by a containment *proof* or a byte-identical duplicate — removal cannot
+change a verdict), **review** (covered on this panel only; a different library might separate
+them), or **keep provenance** (the only cover lies in a *different published set*, so removing the
+rule would destroy the record of which catalogue flagged a compound). Nothing is ever removed
+automatically; `--allow-cross-set-cleanup` opts into the provenance-losing case deliberately.
+
 ## Prove redundancy instead of measuring it
 
 `smartsaudit`'s `subsumed_by` is empirical. Add the static prover to the audit, or run it alone:

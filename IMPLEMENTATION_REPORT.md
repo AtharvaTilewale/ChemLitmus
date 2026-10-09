@@ -321,14 +321,90 @@ against `train.smi` only, with repaired candidates reported as their own populat
 
 ---
 
+## 9a. Feature matrix against the brief
+
+Every numbered requirement of the brief, with its state. "Partial" and "not implemented" are
+stated as such; nothing below is marked complete on the strength of a placeholder.
+
+| Brief | Requirement | State | Where |
+|---|---|---|---|
+| §4.1 | FCFP4 uses feature invariants; fingerprint provenance recorded | **Implemented** | `cheminfo.FP_DESCRIPTIONS`, `FingerprintResult` |
+| §4.2 | One shared structure validator; `.smi` names vs structure columns; defined CXSMILES behaviour | **Implemented** | `smiles.mol_from_smiles`, `split_smiles_field`, `is_cxsmiles` |
+| §4.3 | Execution/preparation status; failures are not negatives | **Implemented** | `smartsaudit.PreparedLibrary`, `PreparationStatus`, `match_error`, `processing_complete` |
+| §4.4 | Record-preserving ingestion; explicit column mapping; compatibility wrapper | **Implemented** | `core/records.py`, `utils/parsers.parse_compounds_file` |
+| §4.5 | Repairs as candidates with edits, rationale, status; policy gate; no fabricated confidence | **Implemented** | `SmilesDiagnosis.repair_status`, `RepairPolicy` |
+| §4.6 | Corrected identity / formula / policy / proof descriptions | **Implemented** | `docs/concepts/molecular-identity.md`, `smarts-proofs.md` |
+| §5 | Typed record model, stable ids, preserved failures, SDF properties | **Implemented** | `Record`, `RecordSet` |
+| §5 | CSV/TSV/SMI/SDF/XLSX adapters | **Implemented** | `core/records.py` |
+| §5 | Parquet as an optional extension | **Implemented** (extra `chemlitmus[parquet]`) | `records._read_parquet` |
+| §5 | Versioned, validated, hashed policy with presets | **Implemented** | `core/policy.py` |
+| §5 | Mixtures flagged rather than resolved by size; scope status for unsupported chemistry | **Implemented** | `FRAG_MULTIPLE_ORGANIC`, `ELEMENT_UNUSUAL`, `status='unsupported'` |
+| §5 | Transformation provenance; atom correspondence where supported | **Implemented / deliberately absent** | `Transformation`; atom correspondence is **not** claimed anywhere |
+| §5 | Run manifest with checksums, versions, policy hash, seeds | **Implemented** | `core/manifest.py` |
+| §6 | One audit command and Python entry point; required checks | **Implemented** | `audit_dataset`, `chemlitmus audit` |
+| §6 | Stable codes, severity, record ids, evidence, action; dataset vs molecule findings | **Implemented** | `ISSUE_CATALOGUE` (28 codes), `AuditSummary.dataset_warnings` |
+| §6 | Annotated records, quarantine table, groups, summary JSON, manifest, offline HTML; clean export with stated policy | **Implemented** | `core/report.py` |
+| §6 | No universal opaque score | **Implemented** (none exists) | — |
+| §7 | Five overlap classes as distinct evidence; within-split duplicates | **Implemented** | `core/leakage.py` |
+| §7 | Scaffold overlap and configurable nearest-neighbour similarity, parameters reported | **Implemented** | `PairReport.neighbour_fingerprint/threshold` |
+| §7 | Formula matches never called identity leakage | **Implemented** | `PairReport.formula_matches` |
+| §7 | Optional temporal/source constraints; unavailable metadata identified | **Implemented** | `temporal_violations`, `temporal_note` |
+| §7 | Measured contamination distinguished from unknown pretraining contamination | **Implemented** | `LeakageReport.scope` |
+| §8 | Conflicts within identity groups; endpoint context required | **Implemented** | `core/labels.py`, `context_fields` |
+| §8 | Unit conversion with provenance; explicit log conversion; originals preserved | **Implemented** | `Measurement.conversion`, `value_nm`, `log_value` |
+| §8 | Censored values treated as bounds, never averaged | **Implemented** | `Measurement.censored`, excluded from spread |
+| §8 | Technical replicates separated from biological variability when metadata allows | **Implemented** | `ReplicateSplit` (`source_field`) |
+| §8 | Default to review, not strongest activity | **Implemented** | `ConflictGroup.suggested_action = "review"` |
+| §9 | Offline HTML with plots, searchable tables, depictions, highlighted atoms, escaped text | **Implemented** | `report.render_html` |
+| §9 | JSON authoritative, CSV per record, versioned schemas | **Implemented** | `audit.json`, `OUTPUT_SCHEMA_VERSION` |
+| §9 | Severity thresholds and explicit gates; stable exit behaviour | **Implemented** | `GatePolicy`, exits 0/1/3/4 |
+| §9 | GitHub Actions and Python gate examples | **Implemented** | `docs/guides/audit-a-dataset.md` |
+| §10 | Random / identity / scaffold / temporal / source splits; groups indivisible; seeds | **Implemented** | `core/splits.py` |
+| §10 | Achieved fractions, balance, group sizes, post-split leakage; conflicts exposed | **Implemented** | `SplitReport` |
+| §10 | Acyclic molecules not pooled into one scaffold group | **Implemented** | `_scaffold_key` |
+| §11 | Validity / uniqueness / novelty with declared denominators; repaired evaluated separately | **Implemented** | `core/generation.py` |
+| §11 | Scaffold diversity, neighbours, descriptors, alerts, constraints | **Implemented** | `GenerationReport` |
+| §11 | Undefined metrics on empty valid output | **Implemented** | `GenerationReport.undefined` |
+| §11 | Uncertainty intervals only with a justified sampling model | **Deliberately absent** — none is justified here, so none is reported | — |
+| §11 | Learned-model distribution metrics, optional, with model provenance | **Not implemented** | would need model identity + environment capture |
+| §12 | Catalogue metadata (source, version, licence, reference, domain) | **Implemented** | `CatalogueMetadata` |
+| §12 | Example molecules, atom highlights, preparation-flip and version-flip examples | **Implemented** | `example_matches`, `example_match_atoms`, `preparation_flip_examples`; version flips via `smartsdiff` |
+| §12 | Shared match-semantics configuration recorded in results | **Implemented** | `MatchSemantics` |
+| §12 | Precise evidence labels | **Implemented** | `EVIDENCE_LABELS` (8) |
+| §12 | Holdout evaluation; no extrapolation of zero hits | **Implemented** | `--holdout`, `HoldoutResult` |
+| §12 | Reference-panel composition summaries; configurable panels | **Implemented** | `ReferencePanel`, `--library` |
+| §12 | Reviewable cleanup proposals preserving published provenance | **Implemented** | `core/cleanup.py`, `smartsaudit --cleanup` |
+| §12 | Undecided prover states preserved; satisfiability is local | **Implemented** | unchanged from 1.0.0, documented |
+| §12 | Independently checkable witnesses, adversarial cases | **Implemented** | witnesses returned; 20 directional cases in `tests/test_smartsproof.py` |
+| §12 | Precision/recall against curated labels | **Not implemented** | no independently curated label set available |
+| §12 | Cross-version RDKit regressions | **Not implemented** | needs a multi-version matrix |
+| §12 | Versioned benchmark recipe; no union-as-PAINS claims | **Implemented** | `benchmarks/alert_preparation_sensitivity.py`; claim corrected |
+| §13 | Streaming/chunked ingestion, resumable jobs, on-disk identity index | **Not implemented** | see §10 |
+| §13 | Packed/sparse SMARTS matrices | **Not implemented** | dense boolean matrix retained |
+| §13 | Throughput and peak-memory benchmarks | **Not implemented** | so no capacity is claimed anywhere |
+| §13 | Provider retrieval timestamps, cache staleness, field-level provenance | **Implemented** | `CompoundRecord.retrieved_at/from_cache/cached_at/field_provenance` |
+| §13 | Source record versions where available | **Partial** | field exists (`source_version`); no provider populates it — none of the four exposes one |
+| §13 | Cache snapshot export/import | **Not implemented** | |
+| §13 | Core audits run without network | **Implemented** | audit/leakage/conflicts/split/generated make no network call |
+| §13 | Optional REST/MCP adapter, report viewer | **Not implemented** | deferred as the brief directs |
+| §14 | Curated regression corpus with reasons and provenance | **Implemented** | `tests/test_brief_coverage.py::CORPUS` (18 cases) |
+| §14 | Verification against direct RDKit reference operations | **Implemented** | FCFP4 vs RDKit generators; identity vs `RegistrationHash` |
+| §14 | Standardisation idempotence, identity invariance, group-preserving splits, accounting, CLI/API parity | **Implemented** | `tests/test_brief_coverage.py` |
+| §14 | Deterministic offline suite in CI; larger benchmarks separate; mocked providers | **Implemented** | 376 offline tests; `benchmarks/`; provider tests mock HTTP |
+| §14 | Documented supported RDKit range | **Implemented** | `pyproject.toml` (`RDKit>=2023.09`), stated in `docs/getting-started/installation.md` |
+| §14 | Published benchmark inputs, checksums, configurations, outputs, limitations | **Implemented** | benchmark script prints and stores the catalogue checksum |
+| §14 | Controlled "cleaning improves model performance" comparison | **Not attempted** | and no such claim is made |
+| §15 | Shared typed analysis layer; thin adapters; additive fields; optional dependency groups | **Implemented** | `core/*` + `cli/commands/*`; extras `dev`, `docs`, `parquet` |
+| §16 | `IMPLEMENTATION_REPORT.md` with purpose, changes, interfaces, assumptions, usage, verification, limits | **Implemented** | this document |
+
 ## 10. Remaining work (explicitly unfinished)
 
 | Item | Why not done |
 |---|---|
 | Bounded-memory / streaming execution (§13) | The audit holds the record set and a dense pattern matrix in memory. Chunked ingestion, an on-disk identity index and resumable jobs are designed for but not implemented; no throughput or peak-memory benchmark is published, so no capacity is claimed. |
-| Parquet adapter | Optional extension; CSV/TSV/XLSX/SMI/SDF cover the brief's required formats. |
 | REST / MCP adapter and report viewer (§13) | Deferred until the core workflows settle, as the brief directs. |
-| Provider provenance extensions (§13) | Retrieval timestamps, source record versions and field-level provenance in merged records are not yet added; existing `resolve`/`concordance` behaviour is unchanged. |
+| Provider **source record versions** (§13) | The `source_version` field exists but no provider populates it: none of PubChem, ChEMBL, ChEBI or KEGG exposes a per-record version in its API responses. Retrieval timestamps, cache staleness and field-level provenance *are* implemented. |
+| Cache snapshot export/import (§13) | Licensing varies per source; not attempted. |
 | SMARTS precision/recall and cross-version RDKit regressions (§12) | Requires an independently curated label set and a multi-version test matrix; neither exists here, and fabricating either would be an unsupported claim. |
 | Controlled "cleaning improves model performance" comparison (§14) | Not attempted. No such claim is made anywhere in the code or documentation. |
 
