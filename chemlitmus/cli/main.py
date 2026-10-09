@@ -8,6 +8,7 @@ below fixes the order in which commands are listed by ``--help``.
 from chemlitmus.cli._app import app, console, main, version_callback  # noqa: F401
 from chemlitmus.cli.commands import (  # noqa: F401
     validation,
+    dataset,
     identity,
     smarts,
     search,

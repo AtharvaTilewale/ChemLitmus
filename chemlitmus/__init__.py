@@ -70,6 +70,10 @@ from chemlitmus.core.smartsaudit import (
     load_reference_library,
     prepare_molecule,
 )
+from chemlitmus.core.dataset_audit import DatasetAudit, ISSUE_CATALOGUE, audit_dataset
+from chemlitmus.core.leakage import LeakageReport, leakage_report
+from chemlitmus.core.labels import LabelConflictReport, label_conflicts
+from chemlitmus.core.report import CleanPolicy, GatePolicy, GateResult, evaluate_gates, render_html, write_audit_outputs
 from chemlitmus.core.records import Issue, Record, RecordSet, SchemaError, read_records
 from chemlitmus.core.policy import ChemicalPolicy, RepairPolicy, SeverityPolicy, resolve_policy
 from chemlitmus.core.manifest import RunManifest, new_manifest
@@ -212,6 +216,20 @@ def download_structure(
     return client.download_structure(cid, format, dimension, output_dir, force)
 
 __all__ = [
+    # Dataset audit, leakage, labels, reports
+    "audit_dataset",
+    "DatasetAudit",
+    "ISSUE_CATALOGUE",
+    "leakage_report",
+    "LeakageReport",
+    "label_conflicts",
+    "LabelConflictReport",
+    "GatePolicy",
+    "GateResult",
+    "CleanPolicy",
+    "evaluate_gates",
+    "write_audit_outputs",
+    "render_html",
     # Records, policy, provenance
     "Record",
     "RecordSet",
