@@ -7,7 +7,7 @@ If ChemLitmus contributed to published work, please cite the software. A `CITATI
   author  = {Tilewale, Atharva},
   title   = {ChemLitmus: SMILES validation and diagnosis, molecular identity, and structural-alert auditing},
   year    = {2026},
-  version = {1.0.0},
+  version = {1.1.0},
   url     = {https://github.com/AtharvaTilewale/ChemLitmus},
   license = {MIT}
 }

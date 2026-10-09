@@ -25,6 +25,58 @@ Conventions:
 
 ---
 
+## Records, policy and provenance
+
+### `read_records(path, structure_column=None, id_column=None, roles=None, ambiguous='error', sheet=None) -> RecordSet`
+
+CSV/TSV/TXT/XLSX/SMI/SDF into `Record`s. `Record`: `record_id, position, source_file, source_id, structure, structure_format, parsed_smiles, status ('ok'|'empty'|'invalid'|'unsupported'|'error'), issues: list[Issue], fields`. `RecordSet`: `source_file, format, schema_version, columns, roles, n_total, n_ok, n_empty, n_invalid, n_unsupported, n_error, notes, records`; `ok_records()`, `reconcile()`. Raises `SchemaError` for ambiguous column mapping.
+
+### `ChemicalPolicy` · `resolve_policy(config) -> ChemicalPolicy`
+
+Validated, hashed configuration: `allow_cxsmiles, fragment, neutralize, flag_multiple_organic_components, organic_component_min_heavy_atoms, tautomer, stereo, isotopes, identity_level, preparation, use_chirality_in_matching, alert_sets, fingerprint, fingerprint_bits, similarity_threshold, repair (RepairPolicy), severity (SeverityPolicy)`; `.hash`, `.save()`, `.load()`, `.preset('conservative'|'parent')`.
+
+### `RunManifest` · `new_manifest(command, **settings)`
+
+`tool_version, command, created_at, python_version, rdkit_version, platform, inputs/outputs (name + sha256 + size), policy_hash, policy_name, rule_catalogue, reference_library, seeds, settings, output_schema_version`; `add_input()`, `add_output()`, `save()`.
+
+### `mol_from_smiles(smiles, sanitize=True)` · `split_smiles_field(text)` · `SmilesParseError`
+
+The single strict parser every structure-consuming function uses. Internal whitespace raises (CXSMILES excepted); `split_smiles_field` is for `.smi` lines, which *define* a name after whitespace.
+
+---
+
+## Dataset audit, leakage and labels
+
+### `audit_dataset(source, policy=None, structure_column=None, id_column=None, roles=None, ambiguous='error', progress_callback=None) -> DatasetAudit`
+
+`DatasetAudit`: `schema_version, source_file, policy, policy_hash, roles, summary (AuditSummary), records (list[RecordAnnotation]), groups, issues, leakage, label_conflicts`. `RecordAnnotation` carries the parsed and standardised structures, `transformations` (before/after, `changed_text`, `changed_identity`, `identity_relation`), identity keys, structural counts, descriptors, scaffold, alerts with matched atoms, split and issues. `ISSUE_CATALOGUE` maps every code to (default severity, meaning, suggested action).
+
+### `leakage_report(splits, policy=None, reference=None) -> LeakageReport`
+
+`splits` is `{name: [(record_id, smiles, date_or_None), ...]}`. `LeakageReport`: `identity_level, splits, n_by_split, n_unassigned, within_split_duplicates, pairs (PairReport), note`. `PairReport`: `overlap` (one `OverlapClass` per level — **nested, not additive**), `formula_matches` (not identity), `scaffold_overlap_records/fraction`, `n_acyclic_evaluation`, `neighbour_fingerprint/threshold`, `n_related_by_similarity`, `nearest_neighbour_similarity`, `neighbours`, `temporal_violations`, `temporal_note`.
+
+### `label_conflicts(records, policy=None, endpoint_field='endpoint', units_field=None, relation_field=None, context_fields=(), tolerance=1.0, kind='auto') -> LabelConflictReport`
+
+Conflicts within identity groups and endpoint context. `Measurement` records `relation, value, upper, units, value_nm, log_value, conversion, censored, comparable`. Censored values are never averaged.
+
+### `GatePolicy` · `evaluate_gates(audit, gates) -> GateResult` · `write_audit_outputs(audit, out_dir, ...)` · `render_html(audit, gate=None)` · `CleanPolicy`
+
+Gates return `exit_code` 0 / 3 (violation) / 4 (partial processing). `write_audit_outputs` writes every artefact and the manifest.
+
+---
+
+## Splits and generated molecules
+
+### `make_splits(records, fractions=None, strategy='identity', policy=None, seed=0, endpoint_field=None, verify=True) -> SplitReport`
+
+Strategies `random | identity | scaffold | temporal | source`. `SplitReport`: `strategy, seed, requested_fractions, achieved_fractions, n_records, n_excluded, n_groups, group_sizes, n_by_split, endpoint_balance, conflicts, assignments, leakage, note`.
+
+### `evaluate_generated(generated, reference=None, policy=None, constraints=None, repair=False) -> GenerationReport`
+
+`GenerationReport`: `n_generated, n_valid, validity, n_empty, invalid_reasons, identity_level, n_unique, uniqueness, uniqueness_by_level, reference_sets, n_reference, n_novel, novelty, novelty_by_level, n_scaffolds, scaffold_diversity, nearest_neighbour_similarity, fingerprint, descriptor_summary, alerts_by_set, alert_denominator, constraints, n_repaired, repaired_report, undefined, molecules, note`.
+
+---
+
 ## Validation and diagnosis
 
 ### `validate_smiles(smiles_str) -> SMILESValidationResult`

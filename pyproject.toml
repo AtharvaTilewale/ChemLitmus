@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ChemLitmus"
-version = "1.0.0"
+version = "1.1.0"
 description = "SMILES validation and diagnosis, standardization, molecular identity, SMARTS auditing, and multi-database compound lookup"
 readme = "README.md"
 requires-python = ">=3.10"

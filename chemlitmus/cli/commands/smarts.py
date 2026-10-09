@@ -1,7 +1,7 @@
 """SMARTS catalogue quality control commands."""
 
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 import typer
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
@@ -43,6 +43,21 @@ def _print_audit_summary(res: SmartsAuditResult, breadth_threshold: float) -> No
         t.add_row("Exact duplicates", str(res.n_duplicates), pct(res.n_duplicates), "Identical SMARTS string appears earlier")
         t.add_row("Library-equivalent", str(res.n_equivalent), pct(res.n_equivalent), "Identical hit set to another pattern")
         t.add_row("Strictly subsumed", str(res.n_subsumed), pct(res.n_subsumed), "Another pattern's hits contain all of these")
+    if res.reference_panel:
+        p = res.reference_panel
+        console.print(f"  [dim]Reference panel: {p.n_molecules} molecules ({escape(p.source)}), median {p.median_heavy_atoms:g} heavy atoms, "
+                      f"{p.fraction_with_ring:.0%} with a ring, {p.fraction_charged:.0%} charged; top elements " + ", ".join(f"{k} {v}" for k, v in list(p.elements.items())[:6]) + "[/dim]")
+    if res.catalogue and (res.catalogue.name or len(res.catalogue.rule_sets) > 1):
+        c = res.catalogue
+        console.print(f"  [dim]Catalogue: {escape(c.name or 'unnamed')}" + (f" v{escape(c.version)}" if c.version else "") + (f" · {escape(c.licence)}" if c.licence else "")
+                      + f" · {c.n_patterns} patterns in {len(c.rule_sets)} set(s): " + ", ".join(f"{escape(k)} {v}" for k, v in list(c.rule_sets.items())[:6])
+                      + " — measurements cover every set listed, not one named set[/dim]")
+    for h in res.holdout:
+        console.print(f"  [yellow]Holdout {escape(h.panel)}:[/yellow] {h.n_patterns_firing} pattern(s) fire on {h.n_molecules} molecules; "
+                      f"{len(h.patterns_revived)} of them never fired on the reference panel — 'not observed' is panel-specific.")
+    if res.match_semantics:
+        ms = res.match_semantics
+        console.print(f"  [dim]Match semantics: preparation {ms.preparation}, hydrogens {ms.hydrogens}, chirality {'on' if ms.use_chirality else 'ignored (RDKit default)'}, RDKit {escape(ms.rdkit_version or '?')}[/dim]")
     if "proof" in res.checks_run:
         t.add_row("Proven redundant", str(res.n_proven_redundant), pct(res.n_proven_redundant), "Static proof: another pattern contains it, for every molecule")
         t.add_row("Proof undecided", str(res.n_proof_undecided), pct(res.n_proof_undecided), "No witness found — not refuted")
@@ -108,6 +123,11 @@ def smartsaudit_cmd(
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Write the per-pattern audit table to CSV."),
     json_out: Optional[Path] = typer.Option(None, "--json", help="Write the complete result (including the sensitivity summary) to JSON."),
     show: int = typer.Option(15, "--show", help="Number of flagged patterns to list in the terminal."),
+    holdout: Optional[List[Path]] = typer.Option(None, "--holdout", help="Additional library to test patterns against; a 'never fires' verdict is panel-specific. Repeatable."),
+    catalogue_name: Optional[str] = typer.Option(None, "--catalogue-name", help="Catalogue provenance recorded in the result."),
+    catalogue_version: Optional[str] = typer.Option(None, "--catalogue-version"),
+    catalogue_source: Optional[str] = typer.Option(None, "--catalogue-source", help="URL or citation of the catalogue as distributed."),
+    catalogue_licence: Optional[str] = typer.Option(None, "--catalogue-licence"),
 ) -> None:
     """Audit a SMARTS pattern set (structural alerts, substructure filters) for defects.
 
@@ -150,6 +170,16 @@ def smartsaudit_cmd(
         raise typer.Exit(code=1)
 
     check_list = None if checks.strip().lower() == "all" else [c.strip().lower() for c in checks.split(",") if c.strip()]
+    from chemlitmus.core.smartsaudit import CatalogueMetadata
+    cat = CatalogueMetadata(name=catalogue_name, version=catalogue_version, source=catalogue_source, licence=catalogue_licence) \
+        if any((catalogue_name, catalogue_version, catalogue_source, catalogue_licence)) else None
+    holdout_libs = {}
+    for h in holdout or []:
+        if not h.exists():
+            console.print(f"[red]Error:[/red] Holdout library not found: {h}")
+            raise typer.Exit(code=1)
+        hm, _src = load_reference_library(h)
+        holdout_libs[h.stem] = hm
     if check_list and any(c not in AUDIT_CHECKS and c != "all" for c in check_list):
         bad = [c for c in check_list if c not in AUDIT_CHECKS and c != "all"]
         console.print(f"[red]Error:[/red] Unknown check(s) {bad}. Valid: {', '.join(AUDIT_CHECKS)} or all.")
@@ -157,7 +187,8 @@ def smartsaudit_cmd(
     with console.status(f"[bold green]Auditing {len(triples)} patterns against {len(mols):,} molecules...[/bold green]"):
         try:
             res = audit_smarts(triples, library=mols, library_source=source, checks=check_list,
-                               breadth_threshold=breadth_threshold)
+                               breadth_threshold=breadth_threshold,
+                               catalogue=cat, holdout_libraries=holdout_libs or None)
         except ValueError as exc:
             console.print(f"[red]Error:[/red] {exc}")
             raise typer.Exit(code=1)

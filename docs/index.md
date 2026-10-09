@@ -61,6 +61,11 @@ Everything runs offline on RDKit except the explicitly network-backed database c
 | Strip salts, neutralise, canonicalise tautomers | [`standardize`](reference/cli.md#standardize) | yes |
 | Decide whether two records are the same compound | [`identity`](reference/cli.md#identity) | yes |
 | Compare two compound collections | [`diff`](reference/cli.md#diff) | yes |
+| Audit a dataset end to end | [`audit`](reference/cli.md#audit) | yes |
+| Detect train/test leakage | [`leakage`](reference/cli.md#leakage) | yes |
+| Find contradictory labels | [`conflicts`](reference/cli.md#conflicts) | yes |
+| Build group-aware splits | [`split`](reference/cli.md#split) | yes |
+| Evaluate generated molecules | [`generated`](reference/cli.md#generated) | yes |
 | Audit a SMARTS / structural-alert set | [`smartsaudit`](reference/cli.md#smartsaudit) | yes |
 | Prove one alert redundant given another | [`smartsproof`](reference/cli.md#smartsproof) | yes |
 | Compare two alert catalogues by behaviour | [`smartsdiff`](reference/cli.md#smartsdiff) | yes |

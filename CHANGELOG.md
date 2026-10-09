@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-10-09
+
+### Dataset quality and evaluation
+
+- **`audit`** — one offline pass over a dataset: parse status, policy-driven standardisation with before/after provenance (text change vs *identity* change), component / charge / isotope / stereo / element flags, descriptors, configurable structural alerts with matched atoms, identity keys at all six levels and groups at the policy level, split leakage and endpoint conflicts. 28 stable issue codes, each with severity, affected records, evidence and a suggested action. Outputs: annotated records CSV, issues CSV, identity groups CSV, summary JSON, authoritative `audit.json`, resolved policy, run manifest, an offline HTML report (escaped, structure depictions with alert highlights, descriptor histograms, searchable issue table), and an optional clean export whose every exclusion is listed. Input accounting reconciles exactly.
+- **`leakage`** — overlap between splits as distinct, non-additive evidence classes (exact, parent, tautomer, nostereo, skeleton), with scaffold overlap and nearest-neighbour similarity reported separately as *relatedness*, formula matches reported and explicitly not called identity, within-split duplicates, and an optional temporal-order check.
+- **`conflicts`** — contradictory labels or measurements among records of the same compound within the same endpoint context; molar unit conversion with provenance; censored values (`<`, `>`, ranges) kept as bounds and never averaged; tolerance in log10 units; default action is review.
+- **`split`** — reproducible random / identity / scaffold / temporal / source splits that never divide a group; acyclic molecules each form their own scaffold group; reports achieved fractions, group-size distribution, endpoint balance and every unsatisfiable constraint; verified with the same leakage implementation.
+- **`generated`** — evaluation of generated molecules with explicit denominators: validity over all attempts, uniqueness over valid outputs at each identity level, novelty over unique valid outputs against the named reference sets only; scaffold diversity, nearest-reference similarity, alert prevalence, explicit constraints; repaired candidates evaluated as a separate population; metrics without a denominator reported as `undefined` rather than zero.
+- **Record-preserving ingestion** (`chemlitmus.core.records`) — CSV/TSV/XLSX/SMI/SDF into records with stable ids, positions, source ids, original fields, status and issues; ambiguous column mapping is a `SchemaError`, never a guess; SDF properties and failed records preserved.
+- **Versioned chemical policy** (`ChemicalPolicy`) — validated and hashed; presets `conservative` and `parent`; controls fragments, charges, tautomer/stereo/isotope handling, identity level, match preparation, alert sets, fingerprint, repair mode and per-code severities.
+- **Run manifests** (`RunManifest`) — input/output checksums, tool / Python / RDKit versions, policy hash and settings, written with every audit.
+- **Gates** — `--fail-on-severity`, `--max-invalid-fraction`, `--max-duplicate-fraction`, `--no-split-overlap`, `--no-label-conflicts`, `--require-complete`; exit 0 pass, 1 configuration error, 3 policy violation, 4 partial processing.
+
+### Pattern quality control
+
+- `smartsaudit` now records **evidence labels** distinguishing exact text duplicates, observed hit-set identity/containment (claims about *this panel*), static proven containment/equivalence (universal), "not observed in this reference", "unsupported" and "undecided"; the **match semantics** (preparation, hydrogen handling, chirality ignored as RDKit does by default, RDKit version); **catalogue metadata** (`--catalogue-name/-version/-source/-licence`) with a content hash and the pattern count per rule set; a **reference-panel summary** (size, median heavy atoms, ring and charge fractions, element census); **example matches with matched atoms** and preparation-flip examples; and **`--holdout`** libraries, which name the patterns that never fire on the main panel but do fire elsewhere.
+- `benchmarks/alert_preparation_sensitivity.py` — a versioned recipe that reproduces the preparation-sensitivity figures per rule set with the catalogue checksum.
+
+### Fixed
+
+- **`fcfp4` computed ECFP4.** Feature-class Morgan invariants are now used, verified against RDKit's own generator; `FingerprintResult` records `algorithm`, `radius`, `atom_invariants`, `representation` and `chirality`, so the name describes the computation.
+- **Structure fields with internal whitespace were silently truncated.** `mol_from_smiles()` is now the single parser for every structure-consuming operation (`standardize`, `tautomers`, `stereo`, `scaffold`, `iupacname`, fingerprints, similarity, substructure); `CC O` is an error everywhere instead of ethane. CXSMILES is parsed as such; `.smi` lines are split explicitly.
+- **Matching and preparation failures were reported as chemical negatives.** `smartsaudit` now records `match_error` per pattern (hit counts unknown, not zero), tracks per-preparation `PreparationStatus` (molecules that could not be Kekulised are *unevaluated*, not non-hits), excludes them from verdict-flip counts, and reports `processing_complete`. `smartsdiff` excludes unprepared molecules and reports how many.
+- **Repair suggestions were presented as results.** `diagnose` now returns `repair_status` (`not attempted` / `not needed` / `candidate` / `failed`); a candidate parses and is not claimed to be the intended molecule; applying repairs requires an explicit repair policy and the original record is always retained.
+- **The README attributed a union-of-eight-sets measurement to PAINS.** Re-measured per rule set with the new benchmark: PAINS flags 3.8% / 5.0% / 2.1% of the reference library under the three preparations (1.3% verdict flips), while SureChEMBL flags 26.2% / 68.7% / 41.2% (42.5% flips); the 77.6% / 90.5% / 88.5% figures are for all eight sets together.
+- Identity documentation no longer presents consecutive rows of the level table as mutually exclusive sources of duplication: `tautomer` and `nostereo` are siblings below `parent`, so the counts are not additive and the differences between rows are not causes.
+
 ## [1.0.0] - 2026-10-08
 
 Initial release.

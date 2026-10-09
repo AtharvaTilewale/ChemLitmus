@@ -65,6 +65,7 @@ nav:
       - CLI: reference/cli.md
       - Python API: reference/python-api.md
   - Concepts:
+      - Records, policy and provenance: concepts/records-and-policy.md
       - Molecular identity: concepts/molecular-identity.md
       - Molecule preparation: concepts/molecule-preparation.md
       - SMARTS auditing: concepts/smarts-auditing.md

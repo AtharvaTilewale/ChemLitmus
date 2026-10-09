@@ -172,3 +172,5 @@ docs/assets/Thumbs.db
 
 # local scratch
 .qs/
+benchmarks/data/
+benchmarks/results.json

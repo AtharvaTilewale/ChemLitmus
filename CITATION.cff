@@ -5,7 +5,7 @@ authors:
     given-names: "Atharva"
     orcid: "https://orcid.org/0009-0003-9802-8158"
 title: "ChemLitmus: A High-Performance SMILES Validation and PubChem Lookup Tool"
-version: 1.0.0
+version: 1.1.0
 date-released: "2026-10-08"
 url: "https://github.com/AtharvaTilewale/ChemLitmus"
 repository-code: "https://github.com/AtharvaTilewale/ChemLitmus"

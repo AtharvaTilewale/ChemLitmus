@@ -30,6 +30,8 @@ Offline on RDKit, except the explicitly network-backed database commands. Every 
 
 | | Commands |
 |---|---|
+| **Audit a dataset** — one offline pass: parsing, standardisation provenance, identity groups, structural flags, descriptors, alerts, train/test leakage, label conflicts; every record accounted for, stable issue codes with evidence and actions, HTML + JSON + CSV outputs, CI gates | `audit` `leakage` `conflicts` |
+| **ML data workflows** — group-aware splits that never divide an identity or scaffold group; generated-molecule evaluation with explicit denominators for validity, uniqueness and novelty | `split` `generated` |
 | **Validate and diagnose** — located, explainable SMILES failures with mechanical repairs; catches records RDKit silently truncates at whitespace | `validate` `diagnose` |
 | **Standardise and identify** — salt stripping, neutralisation, tautomer canonicalisation; six nested identity levels (exact → parent → tautomer/nostereo → skeleton → formula) built on RDKit `RegistrationHash` | `standardize` `identity` `tautomers` `stereo` `iupacname` |
 | **Compare collections** — structure-aware diff: added, removed, unchanged, and *changed with reason* (salt form, tautomer, stereo) | `diff` |
@@ -40,7 +42,17 @@ Offline on RDKit, except the explicitly network-backed database commands. Every 
 
 ## Why these features
 
-On 9,272 ChEMBL molecules, the identical PAINS catalogue flags **77.6%, 90.5% or 88.5%** of compounds depending only on whether molecules carry implicit hydrogens, explicit hydrogens or Kekulé bonds — a choice no tool records. **16.5% of compounds change pass/fail verdict.** Of the 1,251 ChEMBL structural alerts, 358 contain a hydrogen atom and are silently dead under the default preparation, 112 are exact duplicates, and only 47 carry no flag at all.
+On 9,272 ChEMBL molecules, the same alert catalogue gives different answers depending only on how the molecules were prepared — implicit hydrogens, explicit hydrogens or Kekulé bonds — a choice no tool records. Measured with [`benchmarks/alert_preparation_sensitivity.py`](benchmarks/alert_preparation_sensitivity.py) on the 1,251 ChEMBL structural alerts (`rd_filters` redistribution, eight published sets):
+
+| Rule set | Patterns | Compounds flagged (implicit-H / explicit-H / Kekulé) | Verdict flips vs implicit-H |
+|---|---|---|---|
+| SureChEMBL | 166 | 26.2% / 68.7% / 41.2% | 42.5% / 24.6% |
+| Inpharmatica | 91 | 26.2% / 26.8% / 48.1% | 0.5% / 28.2% |
+| Glaxo | 55 | 12.7% / 10.6% / 36.9% | 2.1% / 24.7% |
+| PAINS | 481 | 3.8% / 5.0% / 2.1% | 1.3% / 4.2% |
+| **all eight sets** | 1,251 | 77.6% / 90.5% / 88.5% | 16.5% / 16.6% |
+
+Those are different questions with different answers: 42.5% of compounds change SureChEMBL verdict between two defensible preparations, and only 19 of the 481 PAINS patterns fire at all on this library. ChemLitmus reports the figure *per set with its denominator*, records the preparation in every output row, and separates what was proven from what was merely observed.
 
 That is the gap ChemLitmus fills: the inputs are not clean, the filters are not right, and the only way to know is to measure. `smartsaudit` measures the catalogue; `--prep` makes the choice explicit and writes it into every output row; `diagnose` and `identity` do the same for the molecules.
 

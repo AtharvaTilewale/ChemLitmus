@@ -28,7 +28,22 @@ ChemLitmus measured this on the 1,251 ChEMBL structural alerts against its 9,272
 | `explicit-h` | 8,392 (90.5%) | 519 | 1,527 (16.5%) |
 | `kekule` | 8,207 (88.5%) | 422 | 1,538 (16.6%) |
 
-One compound in six changes pass/fail depending on a choice that is never written down. Two groups applying "the PAINS filter" to the same library will disagree on roughly a sixth of it, and neither will know.
+One compound in six changes pass/fail depending on a choice that is never written down.
+
+Those figures are for the **union of all eight published sets in the file**, and they are not transferable to any single set. Per set, from the same run ([`benchmarks/alert_preparation_sensitivity.py`](https://github.com/AtharvaTilewale/ChemLitmus/blob/main/benchmarks/alert_preparation_sensitivity.py)):
+
+| Rule set | Patterns | Flagged: implicit-H / explicit-H / Kekulé | Verdict flips vs implicit-H |
+|---|---|---|---|
+| SureChEMBL | 166 | 26.2% / 68.7% / 41.2% | 42.5% / 24.6% |
+| Inpharmatica | 91 | 26.2% / 26.8% / 48.1% | 0.5% / 28.2% |
+| LINT | 57 | 44.1% / 36.2% / 52.7% | 8.7% / 26.8% |
+| MLSMR | 116 | 58.2% / 58.8% / 75.9% | 1.3% / 18.9% |
+| Glaxo | 55 | 12.7% / 10.6% / 36.9% | 2.1% / 24.7% |
+| Dundee | 105 | 51.2% / 44.0% / 47.0% | 7.2% / 7.9% |
+| BMS | 180 | 16.7% / 18.9% / 17.9% | 7.1% / 3.4% |
+| PAINS | 481 | 3.8% / 5.0% / 2.1% | 1.3% / 4.2% |
+
+Two groups applying *the SureChEMBL alerts* to the same library disagree on **42.5%** of it when one adds hydrogens and the other does not. Two groups applying *PAINS* disagree on 1.3%. "The same filter gives the same answer" is false in both cases, by very different amounts — which is why ChemLitmus reports the figure per set with its denominator, and writes the preparation into every output row.
 
 ## What ChemLitmus does about it
 

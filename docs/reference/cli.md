@@ -13,6 +13,58 @@ Every command has `--help`. Conventions used throughout:
 
 ---
 
+## Dataset workflows
+
+### `audit`
+
+```
+chemlitmus audit DATASET [--output-dir DIR] [--config PRESET|FILE] [--structure-column C] [--id-column C]
+    [--split-column C] [--endpoint-column C] [--units-column C] [--relation-column C] [--date-column C]
+    [--source-column C] [--target-column C] [--first-column] [--clean] [--exclude-codes LIST] [--exclude-severity S]
+    [--fail-on-severity S] [--max-invalid-fraction F] [--max-duplicate-fraction F] [--no-split-overlap]
+    [--no-label-conflicts] [--require-complete]
+```
+
+Full dataset audit: parsing, standardisation provenance, identity groups, structural flags, descriptors, alerts, leakage and label conflicts. Writes `records.csv`, `issues.csv`, `identity_groups.csv`, `summary.json`, `audit.json`, `policy.json`, `manifest.json`, `report.html` (and `clean.csv` + `exclusions.csv` with `--clean`). Exit **0** pass · **1** configuration error · **3** gate violated · **4** processing incomplete. See [Audit a dataset](../guides/audit-a-dataset.md).
+
+### `leakage`
+
+```
+chemlitmus leakage FILE... [--split-column C] [--reference NAME] [--structure-column C] [--id-column C]
+    [--date-column C] [--config P] [--output PATH] [--json PATH] [--fail-on-overlap]
+```
+
+Overlap between splits as non-additive evidence classes (exact, parent, tautomer, nostereo, skeleton), plus scaffold and similarity relatedness, within-split duplicates, formula matches (not identity) and a temporal check. Exit 3 with `--fail-on-overlap` when any overlap exists at the policy identity level.
+
+### `conflicts`
+
+```
+chemlitmus conflicts DATASET --endpoint-column C [--units-column C] [--relation-column C] [--context LIST]
+    [--tolerance F] [--kind auto|classification|quantitative] [--config P] [--output PATH] [--json PATH]
+```
+
+Contradictory labels or measurements among records of the same compound in the same endpoint context. Molar units converted with provenance; censored values kept as bounds.
+
+### `split`
+
+```
+chemlitmus split DATASET [--fractions train=0.8,test=0.2] [--strategy random|identity|scaffold|temporal|source]
+    [--seed N] [--endpoint-column C] [--date-column C] [--source-column C] [--config P] [--output PATH] [--json PATH]
+```
+
+Group-aware split generation; groups are never divided and unsatisfiable constraints are reported. Verified with the leakage implementation.
+
+### `generated`
+
+```
+chemlitmus generated FILE [--reference PATH ...] [--structure-column C] [--constraints 'mw=0:500,logp=-1:5']
+    [--repair] [--config P] [--output PATH] [--json PATH]
+```
+
+Validity (over all attempts), uniqueness (over valid outputs, per identity level), novelty (over unique valid outputs, against the named references only), scaffold diversity, nearest-reference similarity, alerts and explicit constraints. Repaired candidates evaluated separately.
+
+---
+
 ## Validation and diagnosis
 
 ### `validate`
@@ -152,6 +204,8 @@ chemlitmus smartsaudit [PATTERNS] [--explain SMARTS] [--library PATH] [--checks 
 Per-pattern CSV columns: `index, name, rule_set, smarts, parses, parse_error, n_query_atoms, requires_explicit_h, has_recursive_smarts, n_hits, hit_fraction, over_broad, never_fires, dead_verdict, never_matching_atoms, duplicate_of, equivalent_to, subsumed_by, preparation_sensitive, flags, hits_implicit-h, hits_explicit-h, hits_kekule`. See [Auditing alert sets](../guides/audit-alert-sets.md) and [SMARTS auditing](../concepts/smarts-auditing.md).
 
 ---
+
+Additional options: `--holdout PATH` (repeatable; an extra library whose hits show that a "never fires" verdict is panel-specific), and `--catalogue-name` / `--catalogue-version` / `--catalogue-source` / `--catalogue-licence`, recorded in the result next to a content hash and the pattern count per rule set.
 
 ### `smartsproof`
 

@@ -6,10 +6,12 @@
 
 Structural-alert catalogues are redistributed as plain text and applied with whatever molecule preparation a toolkit defaults to. Nobody validates them. When ChemLitmus audited the 1,251 ChEMBL structural alerts (PAINS, BMS, SureChEMBL, MLSMR, Dundee, Inpharmatica, LINT, Glaxo) against its 9,272-molecule reference set:
 
-- The **same catalogue flagged 77.6%, 90.5% or 88.5%** of compounds depending only on whether molecules had implicit hydrogens, explicit hydrogens or Kekulé bonds. **16.5% of compounds changed pass/fail verdict** between implicit and explicit H.
+- Taken together, the eight sets flagged **77.6%, 90.5% or 88.5%** of compounds depending only on whether molecules had implicit hydrogens, explicit hydrogens or Kekulé bonds; **16.5% of compounds changed pass/fail verdict** between implicit and explicit H. *Per set the spread differs enormously* — SureChEMBL flips 42.5% of compounds, PAINS 1.3% — so never quote a union figure for one named set (see [Molecule preparation](../concepts/molecule-preparation.md#how-much-it-matters)).
 - **358 alerts (29%) contain a hydrogen atom** and therefore match nothing under RDKit's default preparation. They are silently dead unless you add hydrogens.
 - **112 are byte-identical duplicates** of another alert; **354 are empirically subsumed** by another (every molecule they flag is already flagged by a broader rule).
 - Only **47 of 1,251 (3.8%)** carried no flag at all.
+
+All of these are measurements on *this* catalogue file against *this* reference panel; the recipe is [`benchmarks/alert_preparation_sensitivity.py`](https://github.com/AtharvaTilewale/ChemLitmus/blob/main/benchmarks/alert_preparation_sensitivity.py), which prints the catalogue checksum alongside every figure.
 
 None of this is visible from the SMARTS text. It is only visible by measurement.
 
@@ -104,6 +106,37 @@ chemlitmus smartsaudit alerts.csv --library my_library.smi
 ```
 
 Every empirical verdict — breadth, dead, equivalence, subsumption, sensitivity — is then relative to *your* molecules, which is usually what you want.
+
+## Know what kind of claim each finding is
+
+Every redundancy finding carries an **evidence label** (`audit.csv` column `evidence`):
+
+| Label | Means |
+|---|---|
+| `exact text duplicate` | byte-identical SMARTS — always true |
+| `identical observed hit set` | same hits *on this panel*; a different library could separate them |
+| `observed hit-set containment` | hits are a subset *on this panel* |
+| `static proven containment` / `static proven equivalence` | proven for every molecule, with a checkable witness |
+| `not observed in this reference` | zero hits here; says nothing about chemistry outside the panel |
+| `unsupported` | outside the prover's atom/bond universe (recursive SMARTS, isotopes, valence, ring size) |
+| `undecided` | no witness found — **not** a refutation |
+
+The audit also records the conditions the empirical verdicts were produced under: the **match
+semantics** (preparation, hydrogen handling, chirality ignored as RDKit does by default, RDKit
+version), the **catalogue metadata** you supply (`--catalogue-name`, `--catalogue-version`,
+`--catalogue-source`, `--catalogue-licence`) plus a content hash and the pattern count *per rule
+set*, and a **reference-panel summary** (size, median heavy atoms, ring and charge fractions,
+element census) so a reader can judge whether the panel resembles their chemistry.
+
+### Never extrapolate a zero-hit result
+
+```bash
+chemlitmus smartsaudit alerts.csv --holdout vendor_library.smi --holdout natural_products.smi
+```
+
+Each holdout library is matched separately, and the report names the patterns that never fired on
+the main panel but *do* fire on the holdout. "Never fires" is a statement about a panel, not about
+chemistry.
 
 ## Prove redundancy instead of measuring it
 

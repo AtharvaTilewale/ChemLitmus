@@ -45,6 +45,18 @@ except ImportError:  # pragma: no cover
 PREPARATIONS: List[str] = ["implicit-h", "explicit-h", "kekule"]
 """Molecule preparations recognised by the audit and by ``--prep`` on other commands."""
 
+EVIDENCE_LABELS: List[str] = [
+    "exact text duplicate",          # byte-identical SMARTS
+    "identical observed hit set",    # same hits on this reference panel (not a proof)
+    "observed hit-set containment",  # hits are a subset on this panel (not a proof)
+    "static proven containment",     # proved for every molecule, with a witness
+    "static proven equivalence",
+    "not observed in this reference",  # zero hits here; says nothing about other chemistry
+    "unsupported",                   # outside the prover's atom/bond universe
+    "undecided",                     # no witness found; not a refutation
+]
+"""Precise evidence labels. Observed labels are claims about *this panel*; proven labels are universal."""
+
 AUDIT_CHECKS: List[str] = ["compile", "breadth", "dead", "redundancy", "sensitivity", "proof"]
 """Audit checks, in the order they run. ``proof`` (static containment proofs, see
 :mod:`chemlitmus.core.smartsproof`) is opt-in: it is not part of ``all``."""
@@ -100,6 +112,10 @@ class PatternAudit(BaseModel):
     proven_equivalent_to: List[int] = Field(default_factory=list, description="Indices of patterns proven to match exactly the same molecules.")
     proof_status: Optional[str] = Field(None, description="proven redundant | proven equivalent | no witness (undecided) | not analysable | unsatisfiable; None when the proof check did not run.")
     proof_reason: Optional[str] = None
+    evidence: List[str] = Field(default_factory=list, description="Precise labels from EVIDENCE_LABELS: what kind of claim each redundancy finding is.")
+    example_matches: List[str] = Field(default_factory=list, description="SMILES of reference molecules this pattern matches.")
+    example_match_atoms: List[List[int]] = Field(default_factory=list, description="Matched atom indices in the corresponding example.")
+    preparation_flip_examples: Dict[str, List[str]] = Field(default_factory=dict, description="Preparation -> example molecules that match under it but not under the default.")
 
     # sensitivity
     hits_by_preparation: Dict[str, int] = Field(default_factory=dict)
@@ -152,6 +168,60 @@ class SensitivitySummary(BaseModel):
     n_sensitive_patterns: int = 0
 
 
+class MatchSemantics(BaseModel):
+    """The matching configuration every empirical result in this audit was produced under.
+
+    RDKit's default substructure match ignores chirality and bond direction; the preparation
+    decides whether hydrogens are explicit and whether rings are aromatic or Kekulé. Static
+    proofs are produced under the same default semantics (chirality and isotopes are outside the
+    prover's universe and reported as not analysable).
+    """
+
+    preparation: str = Field(description="implicit-h | explicit-h | kekule")
+    use_chirality: bool = Field(False, description="RDKit default: chirality is ignored in matching.")
+    aromaticity_model: str = Field("rdkit (default)", description="Aromaticity perception used when the molecules were parsed.")
+    hydrogens: str = Field("implicit", description="implicit | explicit — follows the preparation.")
+    rdkit_version: Optional[str] = None
+
+
+class CatalogueMetadata(BaseModel):
+    """Provenance of the rule catalogue under audit. Supplied by the user; never inferred."""
+
+    name: Optional[str] = None
+    version: Optional[str] = None
+    source: Optional[str] = Field(None, description="URL or citation of the catalogue as distributed.")
+    licence: Optional[str] = None
+    reference: Optional[str] = Field(None, description="Publication the rules come from.")
+    intended_domain: Optional[str] = Field(None, description="Chemistry the rules were derived for (e.g. HTS screening decks).")
+    severity_rationale: Optional[str] = None
+    n_patterns: int = 0
+    content_hash: Optional[str] = Field(None, description="SHA-256 of the sorted SMARTS strings; identifies the catalogue content exactly.")
+    rule_sets: Dict[str, int] = Field(default_factory=dict, description="rule_set -> number of patterns, so a measurement is never attributed to one named set when it covers several.")
+
+
+class ReferencePanel(BaseModel):
+    """Composition of the molecules an empirical verdict was measured on."""
+
+    name: str
+    n_molecules: int
+    source: str
+    content_hash: Optional[str] = None
+    median_heavy_atoms: Optional[float] = None
+    fraction_with_ring: Optional[float] = None
+    fraction_charged: Optional[float] = None
+    elements: Dict[str, int] = Field(default_factory=dict, description="Element -> molecules containing it (top 12).")
+
+
+class HoldoutResult(BaseModel):
+    """A pattern's behaviour on an additional library it was not audited against."""
+
+    panel: str
+    n_molecules: int
+    n_patterns_firing: int
+    patterns_revived: List[int] = Field(default_factory=list, description="Indices that never fired on the main panel but do fire here — 'not observed' is panel-specific.")
+    hits: Dict[int, int] = Field(default_factory=dict, description="pattern index -> hits on this panel.")
+
+
 class PreparationStatus(BaseModel):
     """Whether the reference molecules reached the requested preparation state."""
 
@@ -172,6 +242,10 @@ class SmartsAuditResult(BaseModel):
     breadth_threshold: float
     patterns: List[PatternAudit]
     sensitivity: Optional[SensitivitySummary] = None
+    match_semantics: Optional[MatchSemantics] = None
+    catalogue: Optional[CatalogueMetadata] = None
+    reference_panel: Optional[ReferencePanel] = None
+    holdout: List[HoldoutResult] = Field(default_factory=list)
     preparation_status: Dict[str, PreparationStatus] = Field(default_factory=dict, description="Per preparation: how many reference molecules were evaluated vs. failed preparation. Hit counts are over evaluated molecules only.")
     n_match_failures: int = Field(0, description="Patterns for which matching raised; their hit counts are unknown.")
     elapsed_seconds: float = 0.0
@@ -253,6 +327,8 @@ class SmartsAuditResult(BaseModel):
                 "proven_subsumed_by": ";".join(map(str, p.proven_subsumed_by)),
                 "proven_equivalent_to": ";".join(map(str, p.proven_equivalent_to)),
                 "proof_status": p.proof_status or "",
+                "evidence": ";".join(p.evidence),
+                "example_matches": ";".join(p.example_matches[:3]),
                 "preparation_sensitive": p.preparation_sensitive,
                 "flags": ";".join(p.flags),
             }
@@ -563,6 +639,19 @@ def _compact_atom_query(query: "Chem.Mol", idx: int) -> str:
 # --------------------------------------------------------------------------------------------
 
 
+def _catalogue_metadata(records: Sequence[PatternAudit], supplied: Optional[CatalogueMetadata]) -> CatalogueMetadata:
+    """Fill in what can be computed (content hash, counts per rule set); keep what the user supplied."""
+    import hashlib
+    meta = (supplied.model_copy(deep=True) if supplied else CatalogueMetadata())
+    meta.n_patterns = len(records)
+    meta.content_hash = hashlib.sha256("\n".join(sorted(r.smarts for r in records)).encode()).hexdigest()
+    sets: Dict[str, int] = {}
+    for r in records:
+        sets[r.rule_set or "(unnamed)"] = sets.get(r.rule_set or "(unnamed)", 0) + 1
+    meta.rule_sets = dict(sorted(sets.items(), key=lambda kv: -kv[1]))
+    return meta
+
+
 def audit_smarts(
     patterns: Sequence[str] | Sequence[Tuple[str, Optional[str], Optional[str]]],
     library: Optional[Sequence["Chem.Mol"]] = None,
@@ -571,6 +660,9 @@ def audit_smarts(
     breadth_threshold: float = DEFAULT_BREADTH_THRESHOLD,
     preparations: Optional[Sequence[str]] = None,
     dead_sample: int = DEFAULT_DEAD_SAMPLE,
+    catalogue: Optional[CatalogueMetadata] = None,
+    holdout_libraries: Optional[Dict[str, Sequence["Chem.Mol"]]] = None,
+    n_examples: int = 3,
 ) -> SmartsAuditResult:
     """Audit a set of SMARTS patterns against a reference molecule library.
 
@@ -778,6 +870,83 @@ def audit_smarts(
             rec.proven_subsumed_by = sorted(int(s) for s in pp.proven_subsumed_by)
             rec.proven_equivalent_to = sorted(int(s) for s in pp.proven_equivalent_to)
 
+    # ---- evidence labels, examples, panel summary, holdout ------------------------------
+    for rec in records:
+        ev: List[str] = []
+        if rec.duplicate_of is not None:
+            ev.append("exact text duplicate")
+        if rec.equivalent_to:
+            ev.append("identical observed hit set")
+        if rec.subsumed_by is not None:
+            ev.append("observed hit-set containment")
+        if rec.proof_status == "proven equivalent":
+            ev.append("static proven equivalence")
+        elif rec.proof_status == "proven redundant":
+            ev.append("static proven containment")
+        elif rec.proof_status == "not analysable":
+            ev.append("unsupported")
+        elif rec.proof_status == "no witness":
+            ev.append("undecided")
+        if rec.parses and rec.match_error is None and rec.n_hits == 0:
+            ev.append("not observed in this reference")
+        rec.evidence = ev
+
+    if need_matrix and n_mol and n_examples:
+        M0 = matrices[default_prep]
+        for rec, q in zip(records, queries):
+            if q is None or rec.match_error:
+                continue
+            idx = list(np.flatnonzero(M0[rec.index]))[:n_examples]
+            rec.example_matches = [Chem.MolToSmiles(mols[j]) for j in idx]
+            for j in idx:
+                m = prepare_molecule(mols[j], default_prep)
+                match = m.GetSubstructMatch(q)
+                rec.example_match_atoms.append(sorted(match) if match else [])
+            for prep, M in matrices.items():
+                if prep == default_prep:
+                    continue
+                flips = list(np.flatnonzero(M[rec.index] & ~M0[rec.index]))[:n_examples]
+                if flips:
+                    rec.preparation_flip_examples[prep] = [Chem.MolToSmiles(mols[j]) for j in flips]
+
+    panel = None
+    if n_mol:
+        import hashlib
+        heavy = sorted(m.GetNumHeavyAtoms() for m in mols)
+        elements: Dict[str, int] = {}
+        n_ring = n_charged = 0
+        for m in mols:
+            if m.GetRingInfo().NumRings():
+                n_ring += 1
+            if Chem.GetFormalCharge(m):
+                n_charged += 1
+            for sym in {a.GetSymbol() for a in m.GetAtoms()}:
+                elements[sym] = elements.get(sym, 0) + 1
+        panel = ReferencePanel(
+            name="reference", n_molecules=n_mol, source=library_source,
+            content_hash=hashlib.sha256("\n".join(sorted(Chem.MolToSmiles(m) for m in mols)).encode()).hexdigest(),
+            median_heavy_atoms=float(heavy[len(heavy) // 2]), fraction_with_ring=round(n_ring / n_mol, 4), fraction_charged=round(n_charged / n_mol, 4),
+            elements=dict(sorted(elements.items(), key=lambda kv: -kv[1])[:12]),
+        )
+
+    holdouts: List[HoldoutResult] = []
+    for name, lib in (holdout_libraries or {}).items():
+        hl = _build_library(list(lib), default_prep)
+        hits: Dict[int, int] = {}
+        revived: List[int] = []
+        for rec, q in zip(records, queries):
+            if q is None:
+                continue
+            v, err = hl.match(q)
+            if err:
+                continue
+            n = int(v.sum())
+            if n:
+                hits[rec.index] = n
+                if rec.never_fires:
+                    revived.append(rec.index)
+        holdouts.append(HoldoutResult(panel=name, n_molecules=len(lib), n_patterns_firing=len(hits), patterns_revived=revived, hits=hits))
+
     return SmartsAuditResult(
         n_patterns=len(records),
         n_molecules=n_mol,
@@ -787,6 +956,11 @@ def audit_smarts(
         patterns=records,
         sensitivity=summary,
         preparation_status=prep_status,
+        match_semantics=MatchSemantics(preparation=default_prep, hydrogens="explicit" if default_prep == "explicit-h" else "implicit",
+                                       rdkit_version=getattr(__import__("rdkit"), "__version__", None)),
+        catalogue=_catalogue_metadata(records, catalogue),
+        reference_panel=panel,
+        holdout=holdouts,
         n_match_failures=sum(1 for r in records if r.match_error),
         elapsed_seconds=round(time.time() - t0, 3),
     )
@@ -857,7 +1031,7 @@ def explain_smarts(
 
 
 __all__ = [
-    "PREPARATIONS",
+    "PREPARATIONS", "EVIDENCE_LABELS", "MatchSemantics", "CatalogueMetadata", "ReferencePanel", "HoldoutResult",
     "AUDIT_CHECKS",
     "DEFAULT_BREADTH_THRESHOLD",
     "PatternAudit",
