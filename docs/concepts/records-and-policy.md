@@ -65,7 +65,7 @@ Every run writes a `manifest.json`:
 
 ```json
 {
-  "tool_version": "1.1.0", "command": "chemlitmus audit", "created_at": "2026-10-09T...",
+  "tool_version": "1.0.0", "command": "chemlitmus audit", "created_at": "2026-10-09T...",
   "python_version": "3.11.16", "rdkit_version": "2026.03.6", "platform": "Linux x86_64",
   "inputs": [{"path": "data.csv", "sha256": "…", "size_bytes": 1234}],
   "outputs": [...], "policy_hash": "…", "policy_name": "parent",

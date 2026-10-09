@@ -102,7 +102,7 @@ from chemlitmus.providers import (
 from chemlitmus.utils.parsers import parse_compounds_file
 from chemlitmus.utils.export import export_results
 
-__version__ = "1.1.0"
+__version__ = "1.0.0"
 __author__ = "Atharva Tilewale"
 __license__ = "MIT"
 
