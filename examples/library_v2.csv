@@ -1,0 +1,22 @@
+id,smiles,name,vendor
+L001,CC(=O)Oc1ccccc1C(=O)O,aspirin,VendorA
+L002,CC(=O)Oc1ccccc1C(=O)[O-].[Na+],aspirin sodium,VendorB
+L003,C[C@H](N)C(=O)O,L-alanine,VendorA
+L006,O=c1cccc[nH]1,2-pyridone,VendorA
+L007,Cn1cnc2c1c(=O)n(C)c(=O)n2C,caffeine,VendorA
+L008,Cn1cnc2c1c(=O)n(C)c(=O)n2C,caffeine,VendorB
+L009,CC(C)Cc1ccc(C(C)C(=O)[O-])cc1.[Na+],ibuprofen sodium,VendorA
+L010,CC(C)Cc1ccc([C@H](C)C(=O)O)cc1,(S)-ibuprofen,VendorB
+L011,CC(=O)Nc1ccc(O)cc1,paracetamol,VendorA
+L012,CCN(CC)CC(=O)Nc1c(C)cccc1C.Cl,lidocaine hydrochloride,VendorB
+L013,CN(C)C(=N)NC(=N)N,metformin,VendorA
+L014,CN1CCC[C@H]1c1cccnc1,nicotine,VendorA
+L016,Oc1ccc(C=O)cc1O,"3,4-dihydroxybenzaldehyde",VendorC
+L017,O=C1C=CC(=O)C=C1,benzoquinone,VendorC
+L018,CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC(=O)O,dotriacontanoic acid,VendorC
+L019,C[N+](C)(C)CCO,choline,VendorB
+L020,OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O,glucose,VendorA
+L021,CC(C)NCC(O)COc1cccc2ccccc12,propranolol,VendorA
+L025,CCN,ethylamine,VendorA
+L026,CC(=O)Oc1ccccc1C(=O)O,aspirin,VendorD
+L027,Clc1ccc(cc1)C(c1ccccc1)N1CCN(CC1)CCOCC(=O)O,cetirizine,VendorA

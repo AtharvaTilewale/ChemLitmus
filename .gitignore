@@ -177,3 +177,8 @@ benchmarks/results.json
 
 # local-only implementation notes (not published)
 IMPLEMENTATION_REPORT.md
+
+# example data is committed even though data files are ignored elsewhere
+!examples/*.csv
+# LibreOffice / OpenOffice lock files
+.~lock.*#

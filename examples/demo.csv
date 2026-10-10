@@ -1,0 +1,10 @@
+smiles,name
+CC(=O)Oc1ccccc1C(=O)O,aspirin
+CC(=O)Oc1ccccc1C(=O)[O-].[Na+],aspirin sodium
+C[C@H](N)C(=O)O,L-alanine
+C[C@@H](N)C(=O)O,D-alanine
+Oc1ccccn1,2-hydroxypyridine
+O=c1cccc[nH]1,2-pyridone
+C1CC(C,broken
+c1cncc1,pyrrole-typo
+CC O,spaced

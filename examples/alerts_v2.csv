@@ -1,0 +1,14 @@
+name,smarts,rule_set
+nitro,[N+](=O)[O-],demo
+azo,N=N,demo
+aldehyde,[CX3H1]=O,demo
+thiol,[SX2H][#6],demo
+quinone,O=C1C=CC(=O)C=C1,demo
+michael_acceptor,"C=CC(=O)[#6,#7,#8]",demo
+acyl_halide,"C(=O)[Cl,Br,I]",demo
+phenol,c1ccccc1[OX2H],demo
+aromatic_CH,c[H],demo
+recursive_carbonyl,[$(C=O)],demo
+halo_alkane,[Cl][CX4],demo
+any_chloride,[#6][Cl],demo
+epoxide,C1OC1,demo
