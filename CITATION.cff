@@ -4,15 +4,23 @@ authors:
   - family-names: "Tilewale"
     given-names: "Atharva"
     orcid: "https://orcid.org/0009-0003-9802-8158"
-title: "ChemLitmus: A High-Performance SMILES Validation and PubChem Lookup Tool"
+title: "ChemLitmus: quality control for small-molecule data"
 version: 1.0.0
 date-released: "2026-10-09"
 url: "https://github.com/AtharvaTilewale/ChemLitmus"
 repository-code: "https://github.com/AtharvaTilewale/ChemLitmus"
 license: MIT
+abstract: "Command-line tool and Python library that validates, standardises, deduplicates, audits and compares small-molecule datasets, structural-alert catalogues and database records, reporting findings as evidence with stable issue codes, stated denominators and a declared chemical policy."
 keywords:
   - cheminformatics
-  - smiles
-  - pubchem
-  - chemistry
-  - rdkit
+  - data quality
+  - SMILES
+  - SMARTS
+  - structural alerts
+  - activity cliffs
+  - molecular identity
+  - PubChem
+  - ChEMBL
+  - ChEBI
+  - KEGG
+  - RDKit

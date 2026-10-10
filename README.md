@@ -1,48 +1,256 @@
-# ChemLitmus
+<p align="center">
+  <img src="https://raw.githubusercontent.com/AtharvaTilewale/ChemLitmus/main/docs/assets/chemlitmus-logo-white.png" alt="ChemLitmus" width="560" />
+</p>
+
+<h3 align="center">Quality control for small-molecule data</h3>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/AtharvaTilewale/ChemLitmus/main/docs/assets/chemlitmus-logo-white.png" alt="ChemLitmus" width="620" />
+  Validate, standardise, deduplicate, audit and compare chemical datasets, structural-alert catalogues and database records — before anything is modelled, screened or published.
 </p>
 
 <p align="center">
-  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python 3.10+"></a>
-  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT"></a>
   <a href="https://github.com/AtharvaTilewale/ChemLitmus/actions/workflows/ci.yaml"><img src="https://github.com/AtharvaTilewale/ChemLitmus/actions/workflows/ci.yaml/badge.svg" alt="CI"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue" alt="Python 3.10–3.13"></a>
+  <a href="https://www.rdkit.org/"><img src="https://img.shields.io/badge/RDKit-%E2%89%A5%202023.09-green" alt="RDKit >= 2023.09"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="MIT"></a>
+  <a href="https://chemlitmus.readthedocs.io"><img src="https://img.shields.io/badge/docs-chemlitmus.readthedocs.io-informational" alt="Documentation"></a>
 </p>
 
-**A command-line tool and Python library for checking, cleaning, comparing and auditing small-molecule data — the step before any modelling or screening can be trusted.**
+<p align="center">
+  <a href="#installation">Installation</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#what-chemlitmus-does">Features</a> ·
+  <a href="#typical-workflows">Workflows</a> ·
+  <a href="#python-api">Python API</a> ·
+  <a href="#commands-at-a-glance">Commands</a> ·
+  <a href="#documentation">Documentation</a> ·
+  <a href="#citing">Citing</a>
+</p>
+
+---
+
+## Overview
+
+Chemical datasets are rarely as clean as they look. SMILES that RDKit silently truncates at a space, the same compound entered as three salt forms, a test set that shares parents with the training set, a pIC50 of 11.2 sitting next to neighbours at 8, an alert catalogue whose verdicts change depending on how hydrogens are written — none of these are caught by `MolFromSmiles` returning a molecule.
+
+**ChemLitmus** is a command-line tool and Python library that finds these problems and reports them as *evidence* a scientist can act on: every record is accounted for, every finding carries a stable code with the affected records and a suggested action, every number states its denominator, and nothing is silently dropped, averaged or "fixed".
+
+- **35 commands**, all offline on RDKit except the explicitly network-backed database lookups
+- **Typed results** (Pydantic models) for every operation; CSV / JSON / HTML outputs for every batch command
+- **A declared chemical policy** — fragment handling, charges, tautomers, stereo, identity level, molecule preparation, alert sets — that is validated, hashed and written into every output
+- **Stable exit codes** so the same checks run unchanged in CI
+
+## Installation
 
 ```bash
 pip install chemlitmus
 ```
 
+| Alternative | Command |
+|---|---|
+| Isolated CLI only | `pipx install chemlitmus` |
+| uv | `uv tool install chemlitmus` (CLI) · `uv add chemlitmus` (dependency) |
+| Parquet input support | `pip install "chemlitmus[parquet]"` |
+| From source, for development | `git clone https://github.com/AtharvaTilewale/ChemLitmus.git && cd ChemLitmus && pip install -e ".[dev]"` |
+
+Requirements: Python 3.10 or newer; RDKit 2023.09 or newer is installed automatically. Linux, macOS and Windows are tested in CI. Every dependency ships as a binary wheel — no compiler needed.
+
 ```bash
-chemlitmus diagnose "c1cncc1"          # where and why a SMILES is broken, with a fix
-chemlitmus identity --file lib.csv     # how many distinct compounds, and what varies
-chemlitmus diff old.smi new.smi        # what changed between two releases, chemically
-chemlitmus smartsaudit alerts.csv      # is this PAINS/alert catalogue actually sound?
-chemlitmus filter --file lib.csv --rules pains --prep explicit-h   # screen, reproducibly
+chemlitmus --version      # v1.0.0
+chemlitmus --help
 ```
 
-Offline on RDKit, except the explicitly network-backed database commands. Every result is a typed Pydantic model; every batch command writes CSV; every command has a stable exit code.
+## Quick start
 
-## What it does
+**Why is this SMILES broken, and what would fix it?**
 
-| | Commands |
+```bash
+$ chemlitmus diagnose "c1cncc1"
+  c1cncc1
+  ^
+  [aromaticity] Can't kekulize mol.  Unkekulized atoms: 0 1 2 3 4  (position 0)
+      → A pyrrole-type nitrogen must carry its hydrogen: write it as [nH]
+  Candidate repair (parses; not verified to be the intended molecule): c1cc[nH]c1
+```
+
+**How many distinct compounds are in this file, and what varies between the duplicates?**
+
+```bash
+$ chemlitmus identity --file library.csv
+┃ Level    ┃ Distinct compounds ┃ Collapsed records ┃
+│ exact    │                  3 │                 0 │
+│ parent < │                  2 │                 1 │
+...
+│    2 │ salt, counter-ion or charge form │ CC(=O)Oc1ccccc1C(=O)O | CC(=O)Oc1ccccc1C(=O)O.[Na+] │
+```
+
+**Audit a dataset in one pass — parsing, standardisation, duplicates, alerts, leakage, label conflicts:**
+
+```bash
+$ chemlitmus audit data.csv --endpoint-column pIC50 --split-column split -o audit/
+│ Records                     │     6 │ ok 3 · empty 1 · invalid 2 · unsupported 0 · error 0 │
+│ Distinct compounds (parent) │     2 │ 1 records collapse onto an earlier one               │
+│ Issues: error               │     3 │ SPLIT_OVERLAP ×1, PARSE_WHITESPACE ×1, PARSE_INVALID ×1 │
+│ Leakage test→train          │     1 │ exact 0 · parent 1 · … (nested, not additive)        │
+│ Label conflicts             │     1 │ 1 groups compared (quantitative)                     │
+Outputs: audit/  (records.csv, issues.csv, identity_groups.csv, summary.json, audit.json, policy.json, report.html, manifest.json)
+```
+
+**Is this structural-alert catalogue sound?**
+
+```bash
+$ chemlitmus smartsaudit alerts.csv --checks all,proof
+# unparseable, dead, over-broad, duplicate, equivalent and subsumed patterns;
+# verdict sensitivity to molecule preparation; static containment proofs
+```
+
+**Does one query agree across databases?**
+
+```bash
+$ chemlitmus resolve "levothyroxine" --sources pubchem,chembl,chebi,kegg
+# per-source structures, the kind of any disagreement (salt form, tautomer, stereo), merged record
+```
+
+## What ChemLitmus does
+
+| Area | What you get | Commands |
+|---|---|---|
+| **Dataset audit** | One offline pass: parse status, standardisation provenance, identity groups, structural flags, descriptors, alerts, split leakage, label conflicts. 32 stable issue codes with severity, evidence and action. HTML + JSON + CSV outputs, run manifest, optional clean export listing every exclusion, CI gates. | `audit` |
+| **Leakage and conflicts** | Train/test overlap as *nested* evidence classes (exact → parent → tautomer / nostereo → skeleton), scaffold and similarity relatedness reported separately; contradictory labels among records of the same compound with molar units converted and censored values kept as bounds. | `leakage` `conflicts` |
+| **Activity cliffs** | Matched molecular pairs and near neighbours whose labels are *proven* to differ; label outliers whose every neighbour disagrees with them — SAR or error, reported for review. | `cliffs` |
+| **ML data workflows** | Reproducible splits that never divide an identity or scaffold group; generated-molecule evaluation with an explicit denominator for every metric. | `split` `generated` |
+| **Validation and diagnosis** | Located, explained SMILES failures with candidate repairs; catches records RDKit would silently truncate at whitespace. | `validate` `diagnose` |
+| **Standardisation and identity** | Salt stripping, neutralisation, tautomer canonicalisation; six nested identity levels on RDKit `RegistrationHash`; tautomer enumeration, stereo analysis, InChI / IUPAC identifiers. | `standardize` `identity` `tautomers` `stereo` `iupacname` |
+| **Collection comparison** | Structure-aware diff of two files: added, removed, unchanged, and *changed with the reason* (salt form, tautomer, stereo). | `diff` |
+| **SMARTS catalogue QC** | Defect audit of alert sets; static containment *proofs* with checkable witnesses (no reference library needed); behavioural diff between two catalogue versions, or a file against RDKit's built-in PAINS / Brenk / NIH. | `smartsaudit` `smartsproof` `smartsdiff` |
+| **Screening and search** | Lipinski / Veber / Ghose / Egan / Ro3, PAINS and QED with the molecule preparation declared and recorded; substructure, similarity, fingerprints, scaffolds, R-group decomposition. | `filter` `substructure` `similar` `fingerprint` `scaffold` `rgroup` |
+| **Structures and 3D** | 2D / 3D generation (ETKDG + MMFF94), conformer ensembles, reaction SMILES, atom mapping, SMILES augmentation. | `download --gen all` `conformers` `reaction` `atommap` `augment` |
+| **Databases** | One query across PubChem, ChEMBL, ChEBI and KEGG with UniChem cross-references and a merged record; name → structure concordance statistics for a whole list; cached lookups and batch retrieval. | `resolve` `concordance` `lookup` `batch` `download` |
+
+## Typical workflows
+
+<details>
+<summary><b>Audit a dataset before training a model</b></summary>
+
+```bash
+# 1. One pass over everything, with CI gates
+chemlitmus audit data.csv --endpoint-column standard_value --units-column standard_units \
+    --split-column split -o audit/ --no-split-overlap --max-invalid-fraction 0.01
+
+# 2. Look at leakage between the splits on its own
+chemlitmus leakage data.csv --split-column split --json leakage.json
+
+# 3. Contradictory measurements of the same compound (censored values stay bounds)
+chemlitmus conflicts data.csv -e standard_value --units-column standard_units \
+    --relation-column standard_relation --context assay_chembl_id
+
+# 4. Near-identical compounds whose labels disagree; suspect labels for review
+chemlitmus cliffs data.csv -e standard_value --units-column standard_units \
+    --relation-column standard_relation -o pairs.csv --outliers outliers.csv
+
+# 5. Rebuild the split so no identity or scaffold group is divided
+chemlitmus split data.csv -s scaffold -f train=0.8,test=0.2 --seed 0 -o split.csv
+```
+
+Exit codes from `audit`: `0` pass · `1` configuration error · `3` a gate was violated · `4` processing incomplete.
+Guide: [Audit a dataset](docs/guides/audit-a-dataset.md) · [Splits and generated molecules](docs/guides/splits-and-generation.md)
+</details>
+
+<details>
+<summary><b>Clean and deduplicate a compound library</b></summary>
+
+```bash
+chemlitmus diagnose --file raw.smi -o diagnosed.csv            # every failure located and explained
+chemlitmus standardize --file raw.smi -o std.csv                # salts, charges, tautomers — with provenance
+chemlitmus identity --file std.csv --level parent -o groups.csv # what is actually the same compound
+chemlitmus audit std.csv -o audit/ --clean                      # clean export + the list of every exclusion
+```
+
+Guide: [Clean a compound library](docs/guides/clean-a-library.md)
+</details>
+
+<details>
+<summary><b>Audit and compare structural-alert catalogues</b></summary>
+
+```bash
+chemlitmus smartsaudit alerts.csv --checks all,proof -o audit.csv     # defects + sensitivity + proofs
+chemlitmus smartsproof alerts.csv                                      # containment proofs, no library needed
+chemlitmus smartsdiff alerts_v1.csv alerts_v2.csv                      # what changed, in molecules not text
+chemlitmus smartsdiff alerts.csv rdkit:PAINS                           # a file against RDKit's built-in set
+chemlitmus filter --file lib.csv --rules pains --prep explicit-h       # screen with the preparation recorded
+```
+
+Guide: [Audit a structural-alert set](docs/guides/audit-alert-sets.md)
+</details>
+
+<details>
+<summary><b>Look compounds up across databases</b></summary>
+
+```bash
+chemlitmus resolve "aspirin"                                  # PubChem + ChEMBL + ChEBI + KEGG, reconciled
+chemlitmus resolve CHEMBL25 --json aspirin.json
+chemlitmus concordance --file names.txt -o concordance.csv    # how often do sources agree on a structure?
+chemlitmus lookup 2244 --type cid
+chemlitmus batch smiles.txt -o metadata.csv
+```
+
+Guide: [Database lookups](docs/guides/databases.md)
+</details>
+
+## Python API
+
+Everything the CLI does is available as functions returning typed models.
+
+```python
+from chemlitmus import (
+    ChemicalPolicy, read_records, audit_dataset, activity_cliffs,
+    diagnose_smiles, group_by_identity, diff_libraries, audit_smarts, apply_filters,
+)
+
+# Diagnose, don't just reject
+d = diagnose_smiles("CC O")
+d.is_valid, d.repaired_smiles, d.repair_status
+# (False, 'CCO', 'candidate')   # a candidate parses; it is not claimed to be the intended molecule
+
+# Audit a table under a declared policy
+policy = ChemicalPolicy.preset("parent")
+records = read_records("data.csv", roles={"endpoint": "pIC50", "split": "split"})
+audit = audit_dataset(records, policy)
+audit.summary.issues_by_code          # {'SPLIT_OVERLAP': 1, 'DUP_PARENT': 1, 'PARSE_WHITESPACE': 1, ...}
+audit.summary.processing_complete     # True — every record reached a terminal status
+
+# Activity cliffs and label outliers
+recs = [dict(r.fields, record_id=r.record_id, smiles=r.parsed_smiles) for r in records.ok_records()]
+cliffs = activity_cliffs(recs, policy, endpoint_field="pIC50")
+cliffs.n_cliffs, cliffs.n_undetermined, [o.record_ids for o in cliffs.outliers]
+
+# Identity, comparison, catalogue QC, screening
+group_by_identity(smiles_list, level="parent").n_groups
+diff_libraries(old_smiles, new_smiles).changes_by_kind      # {'salt, counter-ion or charge form': 3, ...}
+audit_smarts(smarts_patterns).n_subsumed                      # measured on the bundled 9,272-molecule panel
+apply_filters("CC(=O)Oc1ccccc1C(=O)O", ["pains"], preparation="explicit-h").preparation   # 'explicit-h'
+```
+
+Full reference: [Python API](docs/reference/python-api.md).
+
+## Design principles
+
+These are the rules every command follows; they are what distinguish a finding from a guess.
+
+| Principle | In practice |
 |---|---|
-| **Audit a dataset** — one offline pass: parsing, standardisation provenance, identity groups, structural flags, descriptors, alerts, train/test leakage, label conflicts; every record accounted for, stable issue codes with evidence and actions, HTML + JSON + CSV outputs, CI gates; activity cliffs between matched molecular pairs with censored values kept as bounds, and label outliers whose every neighbour disagrees with them | `audit` `leakage` `conflicts` `cliffs` |
-| **ML data workflows** — group-aware splits that never divide an identity or scaffold group; generated-molecule evaluation with explicit denominators for validity, uniqueness and novelty | `split` `generated` |
-| **Validate and diagnose** — located, explainable SMILES failures with mechanical repairs; catches records RDKit silently truncates at whitespace | `validate` `diagnose` |
-| **Standardise and identify** — salt stripping, neutralisation, tautomer canonicalisation; six nested identity levels (exact → parent → tautomer/nostereo → skeleton → formula) built on RDKit `RegistrationHash` | `standardize` `identity` `tautomers` `stereo` `iupacname` |
-| **Compare collections** — structure-aware diff: added, removed, unchanged, and *changed with reason* (salt form, tautomer, stereo) | `diff` |
-| **Audit and compare SMARTS catalogues** — unparseable, dead, over-broad, duplicate, equivalent and subsumed patterns; sensitivity of verdicts to molecule preparation; static containment *proofs* with checkable witnesses (no library needed); semantic diff of two catalogue versions (or a file against RDKit's built-in PAINS/Brenk/NIH) with the number of molecules whose verdict changes | `smartsaudit` `smartsproof` `smartsdiff` |
-| **Screen and search** — Lipinski/Veber/Ghose/Egan/Ro3, PAINS and QED with the molecule preparation declared and recorded; substructure, similarity, fingerprints, scaffolds, R-groups | `filter` `substructure` `similar` `fingerprint` `scaffold` `rgroup` |
-| **Structures** — 2D/3D generation (ETKDG + MMFF94), conformer ensembles, reaction SMILES, atom maps, SMILES augmentation | `download --gen all` `conformers` `reaction` `atommap` `augment` |
-| **Databases** — one query across PubChem, ChEMBL, ChEBI and KEGG; agreement check with the *kind* of disagreement (salt form, tautomer, stereo), merged record, UniChem cross-references; name→structure concordance statistics for a whole list | `resolve` `concordance` `lookup` `batch` `download` |
+| **Nothing is dropped silently** | Every input record has a status (`ok`, `empty`, `invalid`, `unsupported`, `error`) and the counts reconcile exactly. Ambiguous column mapping is an error, never a guess. |
+| **Evidence, not verdicts** | Findings are issue codes with affected records, evidence and a suggested action. No opaque quality score. Default action on a conflict is *review*, not "keep the strongest". |
+| **Every number names its denominator** | Validity over all attempts, uniqueness over valid outputs, novelty over unique valid outputs; alert rates per rule set, never a union figure attributed to one set. |
+| **Censored values are bounds** | `> 10 µM` is never averaged with `5 µM`. A pair of measurements is a conflict or a cliff only when the bounds *prove* the difference; otherwise it is undetermined. |
+| **A failed computation is not a chemical negative** | A pattern that raised is "unknown", not "zero hits"; a molecule that could not be prepared is "unevaluated", not "clean". |
+| **Repairs are candidates** | A candidate repair parses. It carries no confidence number and is applied only under an explicit repair policy, with the original retained. |
+| **Proven is kept apart from observed** | A SMARTS containment proof holds for all molecules; a hit count holds for the panel it was measured on. The reports say which is which. |
+| **The chemistry is declared** | Fragment, charge, tautomer, stereo, identity level, molecule preparation, alert sets and fingerprint are a versioned, hashed policy recorded in every output. |
 
-## Why these features
+## Why molecule preparation is recorded
 
-On 9,272 ChEMBL molecules, the same alert catalogue gives different answers depending only on how the molecules were prepared — implicit hydrogens, explicit hydrogens or Kekulé bonds — a choice no tool records. Measured with [`benchmarks/alert_preparation_sensitivity.py`](benchmarks/alert_preparation_sensitivity.py) on the 1,251 ChEMBL structural alerts (`rd_filters` redistribution, eight published sets):
+On 9,272 ChEMBL molecules, the same alert catalogue gives different answers depending only on how the molecules were prepared — implicit hydrogens, explicit hydrogens or Kekulé bonds — a choice most tools neither expose nor record. Measured with [`benchmarks/alert_preparation_sensitivity.py`](benchmarks/alert_preparation_sensitivity.py) on the 1,251 ChEMBL structural alerts (`rd_filters` redistribution, eight published sets):
 
 | Rule set | Patterns | Compounds flagged (implicit-H / explicit-H / Kekulé) | Verdict flips vs implicit-H |
 |---|---|---|---|
@@ -50,45 +258,67 @@ On 9,272 ChEMBL molecules, the same alert catalogue gives different answers depe
 | Inpharmatica | 91 | 26.2% / 26.8% / 48.1% | 0.5% / 28.2% |
 | Glaxo | 55 | 12.7% / 10.6% / 36.9% | 2.1% / 24.7% |
 | PAINS | 481 | 3.8% / 5.0% / 2.1% | 1.3% / 4.2% |
-| **all eight sets** | 1,251 | 77.6% / 90.5% / 88.5% | 16.5% / 16.6% |
+| **All eight sets** | 1,251 | 77.6% / 90.5% / 88.5% | 16.5% / 16.6% |
 
-Those are different questions with different answers: 42.5% of compounds change SureChEMBL verdict between two defensible preparations, and only 19 of the 481 PAINS patterns fire at all on this library. ChemLitmus reports the figure *per set with its denominator*, records the preparation in every output row, and separates what was proven from what was merely observed.
+42.5% of compounds change their SureChEMBL verdict between two defensible preparations, and only 19 of the 481 PAINS patterns fire at all on this library. ChemLitmus therefore reports alert figures per set with their denominator, takes the preparation as an explicit `--prep` option, and writes it into every output row.
 
-That is the gap ChemLitmus fills: the inputs are not clean, the filters are not right, and the only way to know is to measure. `smartsaudit` measures the catalogue; `--prep` makes the choice explicit and writes it into every output row; `diagnose` and `identity` do the same for the molecules.
+## Commands at a glance
+
+| Group | Commands |
+|---|---|
+| Dataset quality | `audit` · `leakage` · `conflicts` · `cliffs` · `split` · `generated` |
+| Validation | `validate` · `diagnose` |
+| Standardisation and identity | `standardize` · `identity` · `tautomers` · `stereo` · `iupacname` · `diff` |
+| Pattern quality control | `smartsaudit` · `smartsproof` · `smartsdiff` |
+| Screening and search | `filter` · `substructure` · `similar` · `fingerprint` · `scaffold` · `rgroup` |
+| Structures and 3D | `download` · `conformers` · `reaction` · `atommap` · `augment` |
+| Databases | `resolve` · `concordance` · `lookup` · `batch` |
+| Utilities | `init` · `status` · `update` |
+
+`chemlitmus <command> --help` documents every option. Conventions shared by all commands:
+
+- **Input** — SMILES on the command line, or `--file` / a positional dataset in CSV, TSV, XLSX, SMI, SDF or Parquet. Column roles (structure, id, endpoint, split, units, …) are detected from headers or given explicitly.
+- **Output** — a readable terminal report; `-o` for CSV; `--json` for the full typed result. Batch commands never stop at the first bad record.
+- **Exit codes** — `0` success · `1` usage or runtime error · `2` input judged invalid (single-molecule `validate` / `diagnose`) · `3` an `audit` gate violated · `4` `audit` processing incomplete.
+- **Configuration** — `--config policy.yaml` (or `-c`) selects the chemical policy; `chemlitmus status` shows paths, cache and the resolved defaults.
 
 ## Documentation
 
-**[chemlitmus.readthedocs.io](https://chemlitmus.readthedocs.io)**
+Full documentation: **[chemlitmus.readthedocs.io](https://chemlitmus.readthedocs.io)** (built from [`docs/`](docs/)).
 
-- [Installation](docs/getting-started/installation.md) · [Quickstart](docs/getting-started/quickstart.md) · [Configuration](docs/getting-started/configuration.md)
-- Guides: [Clean a library](docs/guides/clean-a-library.md) · [Audit an alert set](docs/guides/audit-alert-sets.md) · [Compare collections](docs/guides/compare-libraries.md) · [Search and structures](docs/guides/search-and-structures.md) · [Database lookups](docs/guides/databases.md)
-- Reference: [CLI](docs/reference/cli.md) · [Python API](docs/reference/python-api.md)
-- Concepts: [Molecular identity](docs/concepts/molecular-identity.md) · [Molecule preparation](docs/concepts/molecule-preparation.md) · [SMARTS auditing](docs/concepts/smarts-auditing.md) · [SMILES diagnosis](docs/concepts/smiles-diagnosis.md)
+| | |
+|---|---|
+| Getting started | [Installation](docs/getting-started/installation.md) · [Quickstart](docs/getting-started/quickstart.md) · [Configuration](docs/getting-started/configuration.md) |
+| Guides | [Audit a dataset](docs/guides/audit-a-dataset.md) · [Splits and generated molecules](docs/guides/splits-and-generation.md) · [Clean a library](docs/guides/clean-a-library.md) · [Audit an alert set](docs/guides/audit-alert-sets.md) · [Compare collections](docs/guides/compare-libraries.md) · [Search and structures](docs/guides/search-and-structures.md) · [Database lookups](docs/guides/databases.md) |
+| Reference | [CLI](docs/reference/cli.md) · [Python API](docs/reference/python-api.md) |
+| Concepts | [Records, policy and provenance](docs/concepts/records-and-policy.md) · [Molecular identity](docs/concepts/molecular-identity.md) · [Activity cliffs](docs/concepts/activity-cliffs.md) · [Molecule preparation](docs/concepts/molecule-preparation.md) · [SMARTS auditing](docs/concepts/smarts-auditing.md) · [SMARTS containment proofs](docs/concepts/smarts-proofs.md) · [SMILES diagnosis](docs/concepts/smiles-diagnosis.md) |
+| Project | [Changelog](CHANGELOG.md) · [Contributing](docs/project/contributing.md) · [Citing](docs/project/citing.md) · [Data and licensing](docs/project/data-and-licensing.md) |
 
-## Python
+## Project status
 
-```python
-from chemlitmus import diagnose_smiles, group_by_identity, diff_libraries, audit_smarts, apply_filters
+Version 1.0.0. Tested on Python 3.10–3.13 across Linux, macOS and Windows with every push; 393 offline tests plus live-database integration tests; documentation built in strict mode. Deliberately out of scope for this release: streaming execution for datasets larger than memory, activity prediction, and any claim that cleaning improves a particular model — the tool reports what the data contains and leaves the modelling conclusions to you.
 
-d = diagnose_smiles("CC O")
-d.is_valid, d.problems[0].message, d.repaired_smiles
-# (False, "Whitespace splits the record: RDKit silently parses only 'CC' …", 'CCO')
+## Contributing
 
-rep = group_by_identity(smiles_list, level="parent")
-rep.n_groups, rep.groups[0].differs_by
-# (11902, ['salt, counter-ion or charge form'])
+Bug reports, feature requests and pull requests are welcome through [GitHub issues](https://github.com/AtharvaTilewale/ChemLitmus/issues). The development setup, test commands and documentation build are described in [Contributing](docs/project/contributing.md). In short:
 
-res = audit_smarts(patterns)                       # bundled 9,272-molecule reference set
-res.n_dead, res.n_subsumed, res.sensitivity.verdict_flips
-
-apply_filters("CC(=O)Oc1ccccc1C(=O)O", ["pains"], preparation="explicit-h").preparation
-# 'explicit-h'
+```bash
+pip install -e ".[dev]"
+ruff check chemlitmus tests --select F,E9
+pytest -q -m "not integration"
+mkdocs build --strict
 ```
 
-## Requirements
+## Citing
 
-Python 3.10+ · RDKit ≥ 2023.09 · pandas · NumPy · Typer · Rich · Pydantic. All install as wheels; no compiler needed.
+If ChemLitmus contributes to published work, please cite it — see [`CITATION.cff`](CITATION.cff) and [Citing](docs/project/citing.md) for BibTeX. Results that use the bundled reference library should also cite ChEMBL (Zdrazil *et al.*, *Nucleic Acids Res.* 2024), and results that use the ChEMBL structural alerts should cite their original publications as listed in [Data and licensing](docs/project/data-and-licensing.md).
 
 ## Licence
 
-Source code: [MIT](LICENSE). The bundled reference library (`chemlitmus/data/`) is derived from ChEMBL 37 and redistributed under [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/) — see [Data and licensing](docs/project/data-and-licensing.md). To cite, see [`CITATION.cff`](CITATION.cff).
+Source code is released under the [MIT Licence](LICENSE).
+
+The bundled reference library (`chemlitmus/data/reference_library.smi.gz`, 9,272 molecules) is derived from ChEMBL 37 and redistributed under [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/); it is **not** covered by the MIT licence. Details in [Data and licensing](docs/project/data-and-licensing.md).
+
+## Acknowledgements
+
+ChemLitmus is built on [RDKit](https://www.rdkit.org/). The structural-alert benchmark uses the ChEMBL alert collection as redistributed by Pat Walters' [`rd_filters`](https://github.com/PatWalters/rd_filters). Database commands use the public web services of [PubChem](https://pubchem.ncbi.nlm.nih.gov/), [ChEMBL](https://www.ebi.ac.uk/chembl/), [ChEBI](https://www.ebi.ac.uk/chebi/), [KEGG](https://www.kegg.jp/) and [UniChem](https://www.ebi.ac.uk/unichem/).

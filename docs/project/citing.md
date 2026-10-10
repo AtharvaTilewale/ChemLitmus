@@ -5,7 +5,7 @@ If ChemLitmus contributed to published work, please cite the software. A `CITATI
 ```bibtex
 @software{chemlitmus,
   author  = {Tilewale, Atharva},
-  title   = {ChemLitmus: SMILES validation and diagnosis, molecular identity, and structural-alert auditing},
+  title   = {ChemLitmus: quality control for small-molecule data},
   year    = {2026},
   version = {1.0.0},
   url     = {https://github.com/AtharvaTilewale/ChemLitmus},

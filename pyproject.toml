@@ -5,14 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ChemLitmus"
 version = "1.0.0"
-description = "SMILES validation and diagnosis, standardization, molecular identity, SMARTS auditing, and multi-database compound lookup"
+description = "Quality control for small-molecule data: validation, standardisation, identity, dataset audit, activity cliffs, SMARTS catalogue QC and multi-database lookup"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
     {name = "Atharva Tilewale", email = "tilewale.atharva@gmail.com"}
 ]
-keywords = ["cheminformatics", "SMILES", "SMARTS", "structural alerts", "PubChem", "ChEMBL", "ChEBI", "KEGG", "chemistry", "RDKit"]
+keywords = ["cheminformatics", "data quality", "SMILES", "SMARTS", "structural alerts", "activity cliffs", "molecular identity", "PubChem", "ChEMBL", "ChEBI", "KEGG", "chemistry", "RDKit"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",
