@@ -3,8 +3,11 @@
 One command answers: what is wrong or uncertain in this dataset, how does it affect my workflow,
 and what is the evidence?
 
+The commands below run on [`examples/bioactivity.csv`](https://github.com/AtharvaTilewale/ChemLitmus/blob/main/examples/bioactivity.csv), a 33-record table with planted problems — see [Example data](../getting-started/example-data.md) for what each record is there to show.
+
 ```bash
-chemlitmus audit dataset.csv --output-dir audit_results
+chemlitmus audit examples/bioactivity.csv --endpoint-column standard_value --units-column standard_units \
+    --relation-column standard_relation --split-column split --date-column year -o audit_results
 ```
 
 Everything runs offline. Every input row is accounted for, every original column is preserved,
@@ -30,9 +33,9 @@ Header names are recognised automatically (`smiles`, `id`, `activity`, `split`, 
 they are not, say so — ChemLitmus refuses to guess which of several columns holds the structures:
 
 ```bash
-chemlitmus audit data.csv --structure-column structure --id-column cmpd_id \
-    --split-column fold --endpoint-column pIC50 --units-column standard_units \
-    --relation-column standard_relation --target-column target_chembl_id --date-column year
+chemlitmus audit examples/bioactivity.csv --structure-column smiles --id-column compound_id \
+    --split-column split --endpoint-column standard_value --units-column standard_units \
+    --relation-column standard_relation --target-column assay_id --source-column document_id --date-column year
 ```
 
 A header-less single-column file is unambiguous and needs nothing. A header-less *multi*-column
@@ -43,9 +46,9 @@ file raises a schema error unless you pass `--first-column`.
 Every chemical decision is a choice; `--config` makes it explicit and hashes it into the outputs.
 
 ```bash
-chemlitmus audit data.csv --config conservative     # keep all components and charges, identity at 'exact', no repairs
-chemlitmus audit data.csv --config parent           # largest organic fragment, neutralised, identity at 'parent' (default)
-chemlitmus audit data.csv --config my_policy.json   # anything in between
+chemlitmus audit examples/bioactivity.csv --config conservative            # keep all components and charges, identity at 'exact', no repairs
+chemlitmus audit examples/bioactivity.csv --config parent                  # largest organic fragment, neutralised, identity at 'parent' (default)
+chemlitmus audit examples/bioactivity.csv --config examples/policy.json    # anything in between — this one groups at 'nostereo' and adds Brenk alerts
 ```
 
 ```python
@@ -80,7 +83,7 @@ and `clean.csv` + `exclusions.csv` always sum back to the input.
 ## Gates for CI
 
 ```bash
-chemlitmus audit data.csv --fail-on-severity error --max-invalid-fraction 0.02 --no-split-overlap
+chemlitmus audit examples/bioactivity.csv --split-column split --fail-on-severity error --max-invalid-fraction 0.02 --no-split-overlap   # exits 3: two invalid records and a parent-level overlap
 ```
 
 Exit codes: **0** pass · **1** configuration error · **3** policy violated · **4** processing
@@ -109,8 +112,8 @@ assert gate.passed, gate.violations
 With a split column, the audit includes a leakage report; it also runs standalone:
 
 ```bash
-chemlitmus leakage dataset.csv --split-column split --fail-on-overlap
-chemlitmus leakage train.csv test.csv valid.csv          # first file is the reference
+chemlitmus leakage examples/bioactivity.csv --split-column split --fail-on-overlap
+chemlitmus leakage train.csv test.csv valid.csv          # or one file per split; the first is the reference
 ```
 
 Overlap is reported as **distinct evidence classes** — exact, parent, tautomer, nostereo,
@@ -131,8 +134,8 @@ evaluated model never saw these compounds.
 ## Label conflicts
 
 ```bash
-chemlitmus conflicts data.csv -e standard_value --units-column standard_units \
-    --relation-column standard_relation --context target_chembl_id,assay_id --tolerance 1.0
+chemlitmus conflicts examples/bioactivity.csv -e standard_value --units-column standard_units \
+    --relation-column standard_relation --context assay_id --tolerance 1.0
 ```
 
 Records of the same compound *in the same endpoint context* are compared. Molar units are
@@ -142,7 +145,7 @@ and never averaged. With a units column, a measurement lacking units is flagged 
 units column at all the endpoint is treated as dimensionless (pIC50, logP, a score) and compared on
 its own scale. Nothing is resolved automatically — the suggested action is review, not "keep the most potent".
 
-With a `--source-column`, each conflict group also reports **where its disagreement lives**:
+With `--source-column document_id`, each conflict group also reports **where its disagreement lives**:
 `technical_spread` is the largest spread within one source (repeated entries from one experiment),
 `between_source_spread` the spread of per-source medians (independent measurements that disagree).
 Without source metadata the split is reported as `not determinable` rather than guessed.
@@ -150,8 +153,8 @@ Without source metadata the split is reported as `not determinable` rather than 
 ## Activity cliffs and suspect labels
 
 ```bash
-chemlitmus cliffs data.csv -e standard_value --units-column standard_units \
-    --relation-column standard_relation --context assay_chembl_id \
+chemlitmus cliffs examples/bioactivity.csv -e standard_value --units-column standard_units \
+    --relation-column standard_relation --context assay_id \
     -o pairs.csv --outliers outliers.csv --json cliffs.json
 ```
 
@@ -175,8 +178,8 @@ isolated disagreements. See [Activity cliffs and label outliers](../concepts/act
 ## Then: splits and generated molecules
 
 ```bash
-chemlitmus split data.csv -s scaffold -f train=0.8,test=0.2 --seed 0 -o split.csv
-chemlitmus generated samples.smi -r train.smi --constraints 'mw=0:500,logp=-1:5'
+chemlitmus split examples/bioactivity.csv -s scaffold -f train=0.8,test=0.2 --seed 0 -o split.csv
+chemlitmus generated examples/generated.smi -r examples/train.smi --constraints 'mw=0:500,logp=-1:5'
 ```
 
 See [Build splits and evaluate generated molecules](splits-and-generation.md).

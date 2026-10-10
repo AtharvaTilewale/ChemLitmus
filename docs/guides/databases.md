@@ -102,7 +102,7 @@ Every record a provider returns is stored in the local SQLite cache under the qu
 ## Batches
 
 ```bash
-chemlitmus resolve --file compounds.txt -s chembl,chebi --output resolved.csv --json resolved.json
+chemlitmus resolve --file examples/names.txt -s chembl,chebi --output resolved.csv --json resolved.json
 ```
 
 The input is one query per line (or a CSV/TSV with a `name`, `id`, `smiles` or `query` column).
@@ -117,7 +117,7 @@ Different databases apply different naming conventions, so the *same name* can r
 enantiomer there. `concordance` quantifies this for a list of names:
 
 ```bash
-chemlitmus concordance --file drugs.txt -s chembl,chebi,kegg -o concordance.csv --json concordance.json
+chemlitmus concordance --file examples/names.txt -s chembl,chebi,kegg -o concordance.csv --json concordance.json
 ```
 
 The report gives, per query, the agreement verdict, the strictest identity level shared by all

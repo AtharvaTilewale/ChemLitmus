@@ -1,0 +1,15 @@
+CC(=O)Oc1ccccc1C(=O)O T001
+Cn1cnc2c1c(=O)n(C)c(=O)n2C T002
+CC(C)Cc1ccc(C(C)C(=O)O)cc1 T003
+CC(=O)Nc1ccc(O)cc1 T004
+CN(C)C(=N)NC(=N)N T005
+CN1CCC[C@H]1c1cccnc1 T006
+CC(C)NCC(O)COc1cccc2ccccc12 T007
+CCN(CC)CC(=O)Nc1c(C)cccc1C T008
+O=C(O)c1ccccc1O T009
+Oc1ccccc1 T010
+c1ccc2[nH]ccc2c1 T011
+CC(=O)c1ccccc1 T012
+OCC(O)CO T013
+CCOC(=O)c1ccccc1 T014
+Nc1ccc(O)cc1 T015

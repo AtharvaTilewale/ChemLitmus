@@ -1,0 +1,38 @@
+{
+  "schema_version": "1",
+  "name": "example-nostereo",
+  "allow_cxsmiles": true,
+  "fragment": "largest_organic",
+  "neutralize": true,
+  "flag_multiple_organic_components": true,
+  "organic_component_min_heavy_atoms": 6,
+  "tautomer": "keep",
+  "stereo": "keep",
+  "isotopes": "keep",
+  "identity_level": "nostereo",
+  "preparation": "implicit-h",
+  "use_chirality_in_matching": false,
+  "alert_sets": [
+    "PAINS",
+    "BRENK"
+  ],
+  "fingerprint": "ecfp4",
+  "fingerprint_bits": 2048,
+  "similarity_threshold": 0.8,
+  "repair": {
+    "mode": "report",
+    "allowed": [
+      "characters",
+      "parentheses",
+      "rings",
+      "brackets",
+      "aromaticity"
+    ]
+  },
+  "severity": {
+    "overrides": {
+      "DUP_NOSTEREO": "warning",
+      "ISOTOPE": "ignore"
+    }
+  }
+}

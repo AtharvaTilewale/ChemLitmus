@@ -2,12 +2,14 @@
 
 **Goal:** take a raw collection — vendor catalogue, scraped dataset, generative-model output — and produce a file where every record parses, every compound appears once at the resolution you choose, and every decision is recorded.
 
+The walkthrough uses [`examples/library.csv`](https://github.com/AtharvaTilewale/ChemLitmus/blob/main/examples/library.csv), a 24-record vendor library with salts, duplicates, tautomer and stereo variants and three broken rows ([Example data](../getting-started/example-data.md)).
+
 **Input:** any of `.csv`, `.tsv`, `.xlsx`, `.smi`, `.sdf`, `.txt`. ChemLitmus auto-detects a column named `smiles`, `canonical_smiles`, `structure` or `compound` (case-insensitive); otherwise it uses the first column. For `.smi`, the first whitespace-separated token on each line is the SMILES.
 
 ## 1. Triage: what is broken, and why
 
 ```bash
-chemlitmus diagnose --file raw.csv --output diagnosis.csv
+chemlitmus diagnose --file examples/library.csv --output diagnosis.csv
 ```
 
 The terminal summary groups failures by primary cause. Open `diagnosis.csv` and sort by `primary_category`:
@@ -86,7 +88,7 @@ Keep `diagnosis.csv`, `standardized.csv` and `identity.csv` alongside the cleane
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
-chemlitmus diagnose     --file raw.csv            --output 01_diagnosis.csv
+chemlitmus diagnose     --file examples/library.csv --output 01_diagnosis.csv
 # (review 01_diagnosis.csv; write accepted repairs + valid records to 02_triaged.csv)
 chemlitmus standardize  --file 02_triaged.csv     --output 03_standardized.csv
 chemlitmus identity     --file 03_standardized.csv --level parent --output 04_identity.csv

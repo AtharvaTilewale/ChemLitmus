@@ -112,7 +112,7 @@ class LabelOutlier(BaseModel):
     neighbour_ids: List[str]
     neighbour_values: List[str]
     neighbour_relationships: List[str]
-    note: str = "Every near neighbour disagrees with this compound, none of them disagree with each other, and several agree outright. A wrong value produces this pattern; so does a genuine cliff. Review the source record before changing anything."
+    note: str = "Every near neighbour disagrees with this compound, and several of them agree with each other. A wrong value produces this pattern; so does a genuine cliff at the edge of a series. Review the source record before changing anything."
 
 
 class CliffReport(BaseModel):
@@ -451,8 +451,8 @@ def activity_cliffs(
         use_mmp / use_similarity: pairing methods; at least one must be on.
         similarity_threshold: Tanimoto (policy fingerprint) at or above which two compounds are neighbours.
         max_r_atoms: largest varied fragment (heavy atoms) accepted for a matched molecular pair.
-        min_outlier_neighbours: a compound is a label outlier when it disagrees with at least this
-            many neighbours that all agree with each other.
+        min_outlier_neighbours: a compound is a label outlier when every neighbour is a proven cliff
+            against it and at least this many of those neighbours are proven consistent with one another.
         keep_pairs: ``all`` | ``cliffs`` (cliffs and undetermined only) — controls ``report.pairs``; counts always cover every pair.
     """
     if not (use_mmp or use_similarity):
@@ -559,23 +559,20 @@ def activity_cliffs(
                                            n_changed_atoms=d["n_changed_atoms"], value_a=a.display, value_b=b.display,
                                            min_difference=round(mn, 4) if mn is not None else None, max_difference=round(mx, 4) if mx is not None else None,
                                            signed_difference=round(signed, 4) if signed is not None else None, verdict=verdict))
-        # 2. label outliers: every neighbour disagrees with c; no two neighbours disagree with each
-        #    other; and at least min_outlier_neighbours of them are proven consistent with one another
-        #    (censored neighbours may be undetermined among themselves without blocking the call).
+        # 2. label outliers: every neighbour is a proven cliff against c, and at least
+        #    min_outlier_neighbours of those neighbours are proven consistent with one another.
+        #    Neighbours that disagree among themselves (a real cliff inside the series, a censored
+        #    value) do not block the call; n_agreeing / n_neighbours shows how concordant the
+        #    neighbourhood is.
         for i, nb in neighbours.items():
             if len(nb) < min_outlier_neighbours or any(v != "cliff" for _, v, _ in nb):
                 continue
             js = [j for j, _, _ in nb]
             verdicts = {}
-            blocked = False
             for x in range(len(js)):
                 for y in range(x + 1, len(js)):
                     v = _verdict(comps[js[x]], comps[js[y]], kind, threshold)[0]
                     verdicts[(js[x], js[y])] = verdicts[(js[y], js[x])] = v
-                    if v == "cliff":
-                        blocked = True
-            if blocked:
-                continue
             n_agree = _largest_consistent_subset(js, verdicts)
             if n_agree < min_outlier_neighbours:
                 continue

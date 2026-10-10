@@ -3,7 +3,9 @@
 ## Group-aware splits
 
 ```bash
-chemlitmus split dataset.csv --strategy identity --fractions train=0.8,test=0.2 --seed 0 -o split.csv
+chemlitmus split examples/bioactivity.csv --strategy identity --fractions train=0.8,test=0.2 --seed 0 -o split.csv
+chemlitmus split examples/bioactivity.csv --strategy scaffold  --fractions train=0.8,test=0.2 --seed 0
+chemlitmus split examples/bioactivity.csv --strategy temporal  --date-column year --fractions train=0.7,test=0.3
 ```
 
 | Strategy | Group = |
@@ -33,8 +35,10 @@ A scaffold split is an evaluation design, not a guarantee of deployment generali
 ## Evaluating generated molecules
 
 ```bash
-chemlitmus generated samples.smi --reference train.smi --constraints 'mw=0:500,logp=-1:5' --repair
+chemlitmus generated examples/generated.smi --reference examples/train.smi --constraints 'mw=0:500,logp=-1:5' --repair
 ```
+
+[`examples/generated.smi`](https://github.com/AtharvaTilewale/ChemLitmus/blob/main/examples/generated.smi) is the raw output of an imaginary generator — two unparseable strings, an exact duplicate, two tautomers of one compound, two copies of a training compound (one as a salt), a PAINS quinone and an alkane that fails the MW constraint — against the 15 drugs in [`examples/train.smi`](https://github.com/AtharvaTilewale/ChemLitmus/blob/main/examples/train.smi). The report gives validity 90.0% (18 / 20 attempts), uniqueness 83.3% at `parent` (15 / 18 valid outputs) and novelty 93.3% (14 / 15 unique valid, against `train` only).
 
 Pass the raw outputs — do not pre-filter. Every metric states its denominator:
 

@@ -212,7 +212,8 @@ def conflicts_cmd(
     endpoint_column: str = typer.Option(..., "--endpoint-column", "-e"),
     units_column: Optional[str] = typer.Option(None, "--units-column"),
     relation_column: Optional[str] = typer.Option(None, "--relation-column"),
-    context_columns: Optional[str] = typer.Option(None, "--context", help="Comma-separated columns (target, assay, source) that must match for measurements to be compared."),
+    context_columns: Optional[str] = typer.Option(None, "--context", help="Comma-separated columns (target, assay) that must match for measurements to be compared."),
+    source_column: Optional[str] = typer.Option(None, "--source-column", help="Document / experiment column: lets each conflict separate within-source (technical) from between-source spread."),
     structure_column: Optional[str] = typer.Option(None, "--structure-column"),
     id_column: Optional[str] = typer.Option(None, "--id-column"),
     tolerance: float = typer.Option(1.0, "--tolerance", help="log10 units for molar quantities (1.0 = ten-fold), absolute otherwise."),
@@ -237,9 +238,9 @@ def conflicts_cmd(
     try:
         roles = {"endpoint": endpoint_column, **({"units": units_column} if units_column else {}), **({"relation": relation_column} if relation_column else {})}
         rs = read_records(dataset, structure_column=structure_column, id_column=id_column, roles=roles)
-        for c in ctx:
+        for c in ctx + ([source_column] if source_column else []):
             if c not in rs.columns:
-                raise SchemaError(f"Context column {c!r} not found. Columns: {rs.columns}")
+                raise SchemaError(f"Column {c!r} not found. Columns: {rs.columns}")
     except (SchemaError, FileNotFoundError, ValueError) as exc:
         console.print(f"[red]Error:[/red] {escape(str(exc))}"); raise typer.Exit(code=1)
     recs = []
@@ -247,15 +248,22 @@ def conflicts_cmd(
         k = compute_identity(r.parsed_smiles)
         d = dict(r.fields); d.update({"record_id": r.record_id, "source_id": r.source_id, "key": k.key(policy.identity_level) if k.is_valid else None})
         recs.append(d)
-    rep = label_conflicts(recs, policy, endpoint_field=endpoint_column, units_field=units_column, relation_field=relation_column, context_fields=ctx, tolerance=tolerance, kind=kind)
+    rep = label_conflicts(recs, policy, endpoint_field=endpoint_column, units_field=units_column, relation_field=relation_column, context_fields=ctx, tolerance=tolerance, kind=kind, source_field=source_column)
     console.print(f"[bold]Label conflicts[/bold] · endpoint [cyan]{escape(endpoint_column)}[/cyan] ({rep.kind}) · identity level {rep.identity_level} · context {escape(', '.join(ctx) or 'none')} · tolerance {tolerance}")
     console.print(f"  {rep.n_groups_compared} groups compared · [bold]{rep.n_conflicts} in conflict[/bold] ({rep.n_records_in_conflict} records) · censored {rep.n_censored} · missing units {rep.n_missing_units} · unparseable {rep.n_unparseable} · {rs.n_total - rs.n_ok} records not parsed")
     if rep.groups:
         t = Table(show_header=True, header_style="bold yellow")
-        t.add_column("Group"); t.add_column("Records", justify="right"); t.add_column("Spread / labels"); t.add_column("Scale"); t.add_column("Measurements", overflow="fold")
+        t.add_column("Group"); t.add_column("Records", justify="right"); t.add_column("Spread / labels"); t.add_column("Scale")
+        if source_column:
+            t.add_column("Within-source / between-source spread")
+        t.add_column("Measurements", overflow="fold")
         for g in rep.groups[:30]:
             ms = "; ".join(f"{m.source_id or m.record_id}: {m.relation if m.relation != '=' else ''}{m.raw_value} {m.units or ''}".strip() for m in g.measurements) if g.measurements else str(g.labels)
-            t.add_row(g.group_id, str(g.n_records), str(g.spread if g.spread is not None else g.labels), g.scale or "", escape(ms))
+            row = [g.group_id, str(g.n_records), str(g.spread if g.spread is not None else g.labels), g.scale or ""]
+            if source_column:
+                rp = g.replicates
+                row.append("" if rp is None else f"{'—' if rp.technical_spread is None else rp.technical_spread} / {'—' if rp.between_source_spread is None else rp.between_source_spread} ({rp.n_sources} sources)")
+            t.add_row(*row, escape(ms))
         console.print(t)
     console.print(f"  [dim]{escape(rep.note)}[/dim]")
     if output:

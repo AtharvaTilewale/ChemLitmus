@@ -1,6 +1,6 @@
 # Quickstart
 
-Ten minutes, one small file, every major capability. Make a working directory and save this as `demo.csv`:
+Ten minutes, one small file, every major capability. The file is [`examples/demo.csv`](https://github.com/AtharvaTilewale/ChemLitmus/blob/main/examples/demo.csv) in the repository (see [Example data](example-data.md)); if you installed from PyPI, save this as `demo.csv`:
 
 ```csv
 smiles,name
@@ -20,7 +20,7 @@ Nine records. Three of them are broken in different ways, and the other six are 
 ## 1. Validate
 
 ```bash
-chemlitmus validate --file demo.csv
+chemlitmus validate --file examples/demo.csv
 ```
 
 Six valid, three invalid. `validate` is the fast gate — exit code 0/2 in single mode makes it a one-line guard in a shell script:
@@ -34,7 +34,7 @@ chemlitmus validate "CC O" --quiet || echo "rejected"
 `validate` says *that* a SMILES failed. `diagnose` says *where* and *why*, and tries to fix it:
 
 ```bash
-chemlitmus diagnose --file demo.csv
+chemlitmus diagnose --file examples/demo.csv
 ```
 
 ```
@@ -42,18 +42,18 @@ chemlitmus diagnose --file demo.csv
    ^  ^
   [parentheses] '(' opens a branch that is never closed  (position 4)
   [rings] Ring closure 1 is opened but never closed  (position 1)
-  Repaired: CCCC
+  Candidate repair (parses; not verified to be the intended molecule): CCCC
 
   c1cncc1
   ^
   [aromaticity] Can't kekulize mol.  Unkekulized atoms: 0 1 2 3 4
       → A pyrrole-type nitrogen must carry its hydrogen: write it as [nH]
-  Repaired: c1cc[nH]c1
+  Candidate repair (parses; not verified to be the intended molecule): c1cc[nH]c1
 
   CC O
     ^
   [characters] Whitespace splits the record: RDKit silently parses only 'CC' …
-  Repaired: CCO
+  Candidate repair (parses; not verified to be the intended molecule): CCO
 ```
 
 The third case matters more than it looks: `CC O` is **not** rejected by RDKit — it parses as ethane and quietly discards the rest. `diagnose` catches this; a plain validity check does not. Repairs are mechanical, not chemical; treat them as candidates to review.
@@ -61,7 +61,7 @@ The third case matters more than it looks: `CC O` is **not** rejected by RDKit �
 ## 3. How many compounds is this, really?
 
 ```bash
-chemlitmus identity --file demo.csv --level parent
+chemlitmus identity --file examples/demo.csv --level parent
 ```
 
 ```
@@ -85,7 +85,7 @@ Strips the counter-ion, neutralises the carboxylate, canonicalises the tautomer,
 
 ## 5. Compare two versions of a library
 
-Save this as `demo_v2.csv` — D-alanine and 2-hydroxypyridine are gone, the broken rows are gone, ethylamine is new:
+[`examples/demo_v2.csv`](https://github.com/AtharvaTilewale/ChemLitmus/blob/main/examples/demo_v2.csv) is a revised release — D-alanine and 2-hydroxypyridine are gone, the broken rows are gone, ethylamine is new:
 
 ```csv
 smiles,name
@@ -97,14 +97,14 @@ CCN,ethylamine
 ```
 
 ```bash
-chemlitmus diff demo.csv demo_v2.csv --level parent
+chemlitmus diff examples/demo.csv examples/demo_v2.csv --level parent
 ```
 
-At `parent` level: **1 added**, **3 removed**, **3 unchanged**. The three removals are D-alanine, 2-hydroxypyridine, and — because the salt is already folded in — nothing else surprising. Now change the level:
+At `parent` level: **1 added**, **2 removed**, **3 unchanged**. The removals are D-alanine and 2-hydroxypyridine; the sodium salt is already folded into aspirin, so it is not a change at all. Now change the level:
 
 ```bash
-chemlitmus diff demo.csv demo_v2.csv --level nostereo    # removed 2, changed 1
-chemlitmus diff demo.csv demo_v2.csv --level skeleton    # removed 1, changed 2
+chemlitmus diff examples/demo.csv examples/demo_v2.csv --level nostereo    # removed 1, changed 1
+chemlitmus diff examples/demo.csv examples/demo_v2.csv --level skeleton    # removed 0, changed 2
 ```
 
 At `nostereo`, D-alanine is no longer "removed" — it is the same compound as L-alanine at that resolution, so the alanine entry becomes **changed: stereochemistry**. At `skeleton`, the dropped hydroxypyridine likewise becomes **changed: tautomer** of the pyridone that survived. Same two files, three honest answers, depending on what you mean by "the same compound". A text `diff` cannot make that distinction at all.
@@ -112,14 +112,14 @@ At `nostereo`, D-alanine is no longer "removed" — it is the same compound as L
 ## 6. Screen — and say how
 
 ```bash
-chemlitmus filter --file demo.csv --rules lipinski,pains --prep explicit-h --output screened.csv
+chemlitmus filter --file examples/demo.csv --rules lipinski,pains --prep explicit-h --output screened.csv
 ```
 
-The `--prep` flag is new and worth understanding. Structural-alert matching gives *different answers* depending on whether molecules carry explicit hydrogens or Kekulé bonds — on a 9,272-molecule reference set the identical PAINS catalogue flags 78% of compounds one way and 91% another. `filter` and `substructure` therefore require the preparation to be declared and write it into every output row, so the screen can be reproduced. See [Molecule preparation](../concepts/molecule-preparation.md).
+The `--prep` flag is new and worth understanding. Structural-alert matching gives *different answers* depending on whether molecules carry explicit hydrogens or Kekulé bonds — on a 9,272-molecule reference set, the SureChEMBL alerts flag 26% of compounds with implicit hydrogens and 69% with explicit hydrogens, and 42.5% of compounds change verdict between those two preparations (PAINS itself is less sensitive: 3.8% vs 5.0%). `filter` and `substructure` therefore require the preparation to be declared and write it into every output row, so the screen can be reproduced. See [Molecule preparation](../concepts/molecule-preparation.md).
 
 ## 7. Audit the filter itself
 
-Nobody checks structural-alert catalogues. ChemLitmus does. Save a few patterns as `alerts.smarts`:
+Nobody checks structural-alert catalogues. ChemLitmus does. [`examples/alerts.smarts`](https://github.com/AtharvaTilewale/ChemLitmus/blob/main/examples/alerts.smarts) holds five patterns:
 
 ```
 c1ccccc1   benzene
@@ -130,7 +130,7 @@ c[H]       aromatic-CH
 ```
 
 ```bash
-chemlitmus smartsaudit alerts.smarts
+chemlitmus smartsaudit examples/alerts.smarts
 ```
 
 The audit reports that `benzene-again` is an exact duplicate, that `benzene` is subsumed by `any-carbon` (every benzene contains a carbon, so the stricter rule can never change a rejection decision), that `oganesson` contains an atom no real molecule has, and that `aromatic-CH` is dead under the default preparation but fires with explicit hydrogens. Point it at a real catalogue — the ChEMBL structural alerts, your in-house filters — and the picture is the same, at scale. See [Auditing alert sets](../guides/audit-alert-sets.md).
@@ -151,6 +151,7 @@ print(rep.n_groups, rep.groups[0].differs_by)      # 1  ['stereochemistry']
 
 ## Next steps
 
+- [Example data](example-data.md) — every file the documentation runs on, and what each one plants
 - [Guides](../guides/clean-a-library.md) — end-to-end workflows
 - [CLI reference](../reference/cli.md) — every option
 - [Configuration](configuration.md) — cache location, database rate limits, logging

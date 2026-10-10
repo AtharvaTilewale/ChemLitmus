@@ -4,9 +4,11 @@ The everyday RDKit operations, packaged with consistent input handling, CSV outp
 
 ## Similarity search
 
+The examples use [`examples/library.csv`](https://github.com/AtharvaTilewale/ChemLitmus/blob/main/examples/library.csv) and [`examples/library.smi`](https://github.com/AtharvaTilewale/ChemLitmus/blob/main/examples/library.smi) ([Example data](../getting-started/example-data.md)).
+
 ```bash
-chemlitmus similar "CC(=O)Oc1ccccc1C(=O)O" --file library.csv --threshold 0.5 --top 10
-chemlitmus similar "CCO" --file library.smi --fp-type ecfp6 --bits 4096 --output hits.csv
+chemlitmus similar "CC(=O)Oc1ccccc1C(=O)O" --file examples/library.csv --threshold 0.5 --top 10
+chemlitmus similar "CCO" --file examples/library.smi --fp-type ecfp6 --bits 4096 --output hits.csv
 ```
 
 Tanimoto similarity on the chosen fingerprint, ranked, with threshold and top-N. Output columns: `rank`, `query`, `hit`, `similarity`, `fingerprint_type`.
@@ -25,7 +27,7 @@ Tanimoto similarity on the chosen fingerprint, ranked, with threshold and top-N.
 
 ```bash
 chemlitmus fingerprint "CCO" --type ecfp4
-chemlitmus fingerprint --file library.csv --type all --output fp.csv
+chemlitmus fingerprint --file examples/library.csv --type all --output fp.csv
 ```
 
 Single mode prints the bit count, density and hex string. Batch mode writes one row per compound with a hex-encoded fingerprint column per type. Decode in Python with `int(hexstr, 16)` or `bytes.fromhex`.
@@ -33,9 +35,9 @@ Single mode prints the bit count, density and hex string. Batch mode writes one 
 ## Substructure search
 
 ```bash
-chemlitmus substructure "[NX3;H2]" --file library.csv --output amines.csv
-chemlitmus substructure "c1ccccc1" --file library.csv --smiles-query
-chemlitmus substructure 'c[H]' --file library.smi --prep explicit-h
+chemlitmus substructure "[NX3;H2]" --file examples/library.csv --output amines.csv
+chemlitmus substructure "c1ccccc1" --file examples/library.csv --smiles-query
+chemlitmus substructure 'c[H]' --file examples/library.smi --prep explicit-h
 ```
 
 The query is SMARTS by default (`--smiles-query` to treat it as an exact SMILES fragment). Output: matching `smiles`, `match_indices` (atom indices of the first match), and `preparation`.
@@ -47,13 +49,13 @@ The query is SMARTS by default (`--smiles-query` to treat it as an exact SMILES 
 
 ```bash
 chemlitmus scaffold "CC(=O)Oc1ccccc1C(=O)O"            # Murcko scaffold: c1ccccc1
-chemlitmus scaffold --file library.csv --output scaffolds.csv
+chemlitmus scaffold --file examples/library.csv --output scaffolds.csv
 ```
 
 Acyclic molecules have no Murcko scaffold; they are reported as `acyclic` rather than as an empty string.
 
 ```bash
-chemlitmus rgroup "c1ccccc1[*:1]" --file analogues.smi
+chemlitmus rgroup "c1ccccc1[*:1]" --file examples/analogues.smi
 chemlitmus rgroup --core "c1ccc([*:1])cc1[*:2]" --smiles "Cc1ccccc1,CCc1ccccc1O"
 ```
 
@@ -63,7 +65,7 @@ R-group decomposition against a core SMARTS with labelled attachment points `[*:
 
 ```bash
 chemlitmus tautomers "Oc1nc(O)c2nc[nH]c2n1" --max 200
-chemlitmus tautomers --file ligands.csv --output tautomers.csv     # one row per tautomer
+chemlitmus tautomers --file examples/library.csv --output tautomers.csv     # one row per tautomer
 ```
 
 RDKit's `TautomerEnumerator`; the canonical tautomer is marked. Use before docking when protonation/tautomer state matters.
@@ -83,7 +85,7 @@ chemlitmus download "CC(=O)Oc1ccccc1C(=O)O" --gen all --3d --format sdf --output
 chemlitmus download "c1ccccc1" --gen all --2d --format mol
 
 # Whole file, offline
-chemlitmus download --file library.smi --gen all --3d --format pdb --output-dir models
+chemlitmus download --file examples/library.smi --gen all --3d --format pdb --output-dir models
 
 # Conformer ensembles (ETKDG v3 + MMFF94), multi-model SDF
 chemlitmus conformers "CC(=O)Oc1ccccc1C(=O)O" --num 50 --output aspirin_confs.sdf

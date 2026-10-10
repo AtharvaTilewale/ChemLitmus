@@ -1,0 +1,8 @@
+aspirin
+caffeine
+ibuprofen
+paracetamol
+levothyroxine
+metformin
+warfarin
+risperidone

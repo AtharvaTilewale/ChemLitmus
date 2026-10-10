@@ -75,13 +75,15 @@ and left to `conflicts`; one with several agreeing records contributes their med
 
 A compound is a label outlier when
 
-1. every near neighbour it has is a proven cliff against it,
-2. no two of those neighbours are a proven cliff against each other, and
-3. at least `--min-neighbours` of them (default 2) are proven consistent with one another.
+1. every near neighbour it has is a proven cliff against it, and
+2. at least `--min-neighbours` of those neighbours (default 2) are proven consistent with one
+   another.
 
-Condition 3 is a clique over exact or tightly bounded values; condition 2 allows censored
-neighbours that cannot be decided among themselves without letting them vouch for anything. The
-report gives `n_neighbours` and `n_agreeing` so the strength of the call is visible.
+Condition 2 is a clique over exact or tightly bounded values. Neighbours that disagree among
+themselves — a genuine cliff inside the series, or a censored value that cannot be decided — do
+not block the call, but they do not vouch for anything either: the report gives `n_neighbours`
+and `n_agreeing` so the strength of the call is visible (9 neighbours of which 8 agree is a
+different statement from 2 of 2).
 
 The call is an issue of severity `warning` (`LABEL_OUTLIER`) because the pattern is the one a
 wrong value produces most often — but a genuine cliff at the edge of a series produces it too. The

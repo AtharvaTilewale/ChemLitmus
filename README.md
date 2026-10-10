@@ -62,6 +62,8 @@ chemlitmus --help
 
 ## Quick start
 
+Every file below is in the repository's [`examples/`](examples/) directory, with a README describing what each one deliberately gets wrong.
+
 **Why is this SMILES broken, and what would fix it?**
 
 ```bash
@@ -76,7 +78,7 @@ $ chemlitmus diagnose "c1cncc1"
 **How many distinct compounds are in this file, and what varies between the duplicates?**
 
 ```bash
-$ chemlitmus identity --file library.csv
+$ chemlitmus identity --file examples/demo.csv
 ┃ Level    ┃ Distinct compounds ┃ Collapsed records ┃
 │ exact    │                  3 │                 0 │
 │ parent < │                  2 │                 1 │
@@ -87,7 +89,7 @@ $ chemlitmus identity --file library.csv
 **Audit a dataset in one pass — parsing, standardisation, duplicates, alerts, leakage, label conflicts:**
 
 ```bash
-$ chemlitmus audit data.csv --endpoint-column pIC50 --split-column split -o audit/
+$ chemlitmus audit examples/demo.csv --endpoint-column pIC50 --split-column split -o audit/
 │ Records                     │     6 │ ok 3 · empty 1 · invalid 2 · unsupported 0 · error 0 │
 │ Distinct compounds (parent) │     2 │ 1 records collapse onto an earlier one               │
 │ Issues: error               │     3 │ SPLIT_OVERLAP ×1, PARSE_WHITESPACE ×1, PARSE_INVALID ×1 │
@@ -99,7 +101,7 @@ Outputs: audit/  (records.csv, issues.csv, identity_groups.csv, summary.json, au
 **Is this structural-alert catalogue sound?**
 
 ```bash
-$ chemlitmus smartsaudit alerts.csv --checks all,proof
+$ chemlitmus smartsaudit examples/alerts.csv --checks all,proof
 # unparseable, dead, over-broad, duplicate, equivalent and subsumed patterns;
 # verdict sensitivity to molecule preparation; static containment proofs
 ```
@@ -134,22 +136,22 @@ $ chemlitmus resolve "levothyroxine" --sources pubchem,chembl,chebi,kegg
 
 ```bash
 # 1. One pass over everything, with CI gates
-chemlitmus audit data.csv --endpoint-column standard_value --units-column standard_units \
+chemlitmus audit examples/bioactivity.csv --endpoint-column standard_value --units-column standard_units \
     --split-column split -o audit/ --no-split-overlap --max-invalid-fraction 0.01
 
 # 2. Look at leakage between the splits on its own
-chemlitmus leakage data.csv --split-column split --json leakage.json
+chemlitmus leakage examples/bioactivity.csv --split-column split --json leakage.json
 
 # 3. Contradictory measurements of the same compound (censored values stay bounds)
-chemlitmus conflicts data.csv -e standard_value --units-column standard_units \
-    --relation-column standard_relation --context assay_chembl_id
+chemlitmus conflicts examples/bioactivity.csv -e standard_value --units-column standard_units \
+    --relation-column standard_relation --context assay_id --source-column document_id
 
 # 4. Near-identical compounds whose labels disagree; suspect labels for review
-chemlitmus cliffs data.csv -e standard_value --units-column standard_units \
+chemlitmus cliffs examples/bioactivity.csv -e standard_value --units-column standard_units \
     --relation-column standard_relation -o pairs.csv --outliers outliers.csv
 
 # 5. Rebuild the split so no identity or scaffold group is divided
-chemlitmus split data.csv -s scaffold -f train=0.8,test=0.2 --seed 0 -o split.csv
+chemlitmus split examples/bioactivity.csv -s scaffold -f train=0.8,test=0.2 --seed 0 -o split.csv
 ```
 
 Exit codes from `audit`: `0` pass · `1` configuration error · `3` a gate was violated · `4` processing incomplete.
@@ -160,8 +162,8 @@ Guide: [Audit a dataset](docs/guides/audit-a-dataset.md) · [Splits and generate
 <summary><b>Clean and deduplicate a compound library</b></summary>
 
 ```bash
-chemlitmus diagnose --file raw.smi -o diagnosed.csv            # every failure located and explained
-chemlitmus standardize --file raw.smi -o std.csv                # salts, charges, tautomers — with provenance
+chemlitmus diagnose --file examples/library.csv -o diagnosed.csv   # every failure located and explained
+chemlitmus standardize --file examples/library.csv -o std.csv       # salts, charges, tautomers — with provenance
 chemlitmus identity --file std.csv --level parent -o groups.csv # what is actually the same compound
 chemlitmus audit std.csv -o audit/ --clean                      # clean export + the list of every exclusion
 ```
@@ -173,11 +175,11 @@ Guide: [Clean a compound library](docs/guides/clean-a-library.md)
 <summary><b>Audit and compare structural-alert catalogues</b></summary>
 
 ```bash
-chemlitmus smartsaudit alerts.csv --checks all,proof -o audit.csv     # defects + sensitivity + proofs
-chemlitmus smartsproof alerts.csv                                      # containment proofs, no library needed
-chemlitmus smartsdiff alerts_v1.csv alerts_v2.csv                      # what changed, in molecules not text
-chemlitmus smartsdiff alerts.csv rdkit:PAINS                           # a file against RDKit's built-in set
-chemlitmus filter --file lib.csv --rules pains --prep explicit-h       # screen with the preparation recorded
+chemlitmus smartsaudit examples/alerts.csv --checks all,proof -o audit.csv    # defects + sensitivity + proofs
+chemlitmus smartsproof examples/alerts.csv                                     # containment proofs, no library needed
+chemlitmus smartsdiff examples/alerts.csv examples/alerts_v2.csv               # what changed, in molecules not text
+chemlitmus smartsdiff examples/alerts.csv rdkit:PAINS                          # a file against RDKit's built-in set
+chemlitmus filter --file examples/library.csv --rules pains --prep explicit-h  # screen with the preparation recorded
 ```
 
 Guide: [Audit a structural-alert set](docs/guides/audit-alert-sets.md)
@@ -189,9 +191,9 @@ Guide: [Audit a structural-alert set](docs/guides/audit-alert-sets.md)
 ```bash
 chemlitmus resolve "aspirin"                                  # PubChem + ChEMBL + ChEBI + KEGG, reconciled
 chemlitmus resolve CHEMBL25 --json aspirin.json
-chemlitmus concordance --file names.txt -o concordance.csv    # how often do sources agree on a structure?
+chemlitmus concordance --file examples/names.txt -o concordance.csv   # how often do sources agree on a structure?
 chemlitmus lookup 2244 --type cid
-chemlitmus batch smiles.txt -o metadata.csv
+chemlitmus batch examples/smiles.txt -o metadata.csv
 ```
 
 Guide: [Database lookups](docs/guides/databases.md)
@@ -214,14 +216,14 @@ d.is_valid, d.repaired_smiles, d.repair_status
 
 # Audit a table under a declared policy
 policy = ChemicalPolicy.preset("parent")
-records = read_records("data.csv", roles={"endpoint": "pIC50", "split": "split"})
+records = read_records("examples/bioactivity.csv", roles={"endpoint": "pchembl_value", "split": "split"})
 audit = audit_dataset(records, policy)
 audit.summary.issues_by_code          # {'SPLIT_OVERLAP': 1, 'DUP_PARENT': 1, 'PARSE_WHITESPACE': 1, ...}
 audit.summary.processing_complete     # True — every record reached a terminal status
 
 # Activity cliffs and label outliers
 recs = [dict(r.fields, record_id=r.record_id, smiles=r.parsed_smiles) for r in records.ok_records()]
-cliffs = activity_cliffs(recs, policy, endpoint_field="pIC50")
+cliffs = activity_cliffs(recs, policy, endpoint_field="pchembl_value")
 cliffs.n_cliffs, cliffs.n_undetermined, [o.record_ids for o in cliffs.outliers]
 
 # Identity, comparison, catalogue QC, screening
@@ -280,7 +282,7 @@ On 9,272 ChEMBL molecules, the same alert catalogue gives different answers depe
 - **Input** — SMILES on the command line, or `--file` / a positional dataset in CSV, TSV, XLSX, SMI, SDF or Parquet. Column roles (structure, id, endpoint, split, units, …) are detected from headers or given explicitly.
 - **Output** — a readable terminal report; `-o` for CSV; `--json` for the full typed result. Batch commands never stop at the first bad record.
 - **Exit codes** — `0` success · `1` usage or runtime error · `2` input judged invalid (single-molecule `validate` / `diagnose`) · `3` an `audit` gate violated · `4` `audit` processing incomplete.
-- **Configuration** — `--config policy.yaml` (or `-c`) selects the chemical policy; `chemlitmus status` shows paths, cache and the resolved defaults.
+- **Configuration** — `--config policy.json` (or `-c`; see [`examples/policy.json`](examples/policy.json)) selects the chemical policy; `chemlitmus status` shows paths, cache and the resolved defaults.
 
 ## Documentation
 
@@ -288,7 +290,7 @@ Full documentation: **[chemlitmus.readthedocs.io](https://chemlitmus.readthedocs
 
 | | |
 |---|---|
-| Getting started | [Installation](docs/getting-started/installation.md) · [Quickstart](docs/getting-started/quickstart.md) · [Configuration](docs/getting-started/configuration.md) |
+| Getting started | [Installation](docs/getting-started/installation.md) · [Quickstart](docs/getting-started/quickstart.md) · [Example data](examples/README.md) · [Configuration](docs/getting-started/configuration.md) |
 | Guides | [Audit a dataset](docs/guides/audit-a-dataset.md) · [Splits and generated molecules](docs/guides/splits-and-generation.md) · [Clean a library](docs/guides/clean-a-library.md) · [Audit an alert set](docs/guides/audit-alert-sets.md) · [Compare collections](docs/guides/compare-libraries.md) · [Search and structures](docs/guides/search-and-structures.md) · [Database lookups](docs/guides/databases.md) |
 | Reference | [CLI](docs/reference/cli.md) · [Python API](docs/reference/python-api.md) |
 | Concepts | [Records, policy and provenance](docs/concepts/records-and-policy.md) · [Molecular identity](docs/concepts/molecular-identity.md) · [Activity cliffs](docs/concepts/activity-cliffs.md) · [Molecule preparation](docs/concepts/molecule-preparation.md) · [SMARTS auditing](docs/concepts/smarts-auditing.md) · [SMARTS containment proofs](docs/concepts/smarts-proofs.md) · [SMILES diagnosis](docs/concepts/smiles-diagnosis.md) |

@@ -122,13 +122,15 @@ def test_quantitative_outlier_requires_neighbours_to_agree():
     # a censored neighbour that is undetermined against the others does not block the call
     rep = activity_cliffs(recs + [_rec("c", "Fc1ccccc1C(=O)O", ">10")], endpoint_field="val", units_field="units")
     assert [o.record_ids for o in rep.outliers] == [["x"]] and rep.outliers[0].n_neighbours == 4 and rep.outliers[0].n_agreeing == 3
-    # but a neighbour that is a proven cliff against another neighbour does
+    # a neighbour that disagrees with the other neighbours does not block the call; it is an outlier in its own right
     rep = activity_cliffs(recs + [_rec("c", "Fc1ccccc1C(=O)O", ">1000")], endpoint_field="val", units_field="units")
-    assert rep.outliers == []
-    # when the neighbours disagree among themselves, nobody is an outlier
+    by = {o.record_ids[0]: o for o in rep.outliers}
+    assert set(by) == {"x", "c"} and (by["x"].n_neighbours, by["x"].n_agreeing) == (4, 3) and (by["c"].n_neighbours, by["c"].n_agreeing) == (4, 3)
+    # a compound that disagrees with every neighbour is an outlier even when one neighbour is itself off;
+    # compounds that agree with at least one neighbour never are
     recs[1]["val"] = "0.5"
     rep = activity_cliffs(recs, endpoint_field="val", units_field="units")
-    assert rep.outliers == [] and rep.n_cliffs > 0
+    assert {o.record_ids[0] for o in rep.outliers} == {"x", "n1"} and rep.n_cliffs > 0
     # a single neighbour is never enough by default
     rep = activity_cliffs([_rec("a", "c1ccccc1C(=O)O", "10"), _rec("b", "Cc1ccccc1C(=O)O", "0.001")], endpoint_field="val", units_field="units")
     assert rep.outliers == [] and rep.n_cliffs == 1

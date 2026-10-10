@@ -27,26 +27,29 @@ Levels nest: records that match at a stricter level also match at every looser o
 ## Run
 
 ```bash
-chemlitmus diff chembl_34.smi chembl_35.smi --level parent --output diff.csv --json diff.json
+chemlitmus diff examples/library.csv examples/library_v2.csv --level parent --output diff.csv --json diff.json
 ```
 
 ```
-Library Diff — chembl_34.smi → chembl_35.smi at level 'parent'
-Compounds in A        2,289      3,417 valid records
-Compounds in B        2,301      3,430 valid records
-Added                    19      in B only
-Removed                   7      in A only
-Unchanged             2,241      same compound, same representation
-Changed                  41      same compound at this level, different representation
-Multiplicity changes      3      record count differs between A and B
-Overlap (Jaccard)     0.989      shared compounds / all compounds
+Library Diff — library.csv → library_v2.csv at level 'parent'
+Compounds in A           18      21 valid records
+Compounds in B           18      21 valid records
+Added                     2      in B only
+Removed                   2      in A only
+Unchanged                15      same compound, same representation
+Changed                   1      same compound at this level, different representation
+Multiplicity changes      0      record count differs between A and B
+Overlap (Jaccard)     0.800      shared compounds / all compounds
 
 What changed
-stereochemistry                                  25
-salt, counter-ion or charge form                 12
-tautomer                                          3
-salt, counter-ion or charge form; stereochemistry 1
+salt, counter-ion or charge form                  1
+
+Removed: C[C@@H](N)C(=O)O · Oc1ccccn1
+Added:   CCN · Clc1ccc(cc1)C(c1ccccc1)N1CCN(CC1)CCOCC(=O)O
+Changed: CC(C)Cc1ccc(C(C)C(=O)O)cc1 → CC(C)Cc1ccc(C(C)C(=O)[O-])cc1.[Na+]   salt, counter-ion or charge form
 ```
+
+[`examples/library_v2.csv`](https://github.com/AtharvaTilewale/ChemLitmus/blob/main/examples/library_v2.csv) is a later release of [`examples/library.csv`](https://github.com/AtharvaTilewale/ChemLitmus/blob/main/examples/library.csv): D-alanine and 2-hydroxypyridine were dropped, ethylamine and cetirizine added, ibuprofen switched to its sodium salt, and the three broken rows removed. Note what the diff does *not* list: aspirin appears in both files twice (once as a Kekulé SMILES in A, once from a second vendor in B), and the sodium salt of aspirin is in both — at `parent` level none of that is a change. Re-run at `--level nostereo` and the removed D-alanine becomes **changed: stereochemistry** against the surviving L-alanine (removed 1, changed 2); at `--level skeleton` the dropped 2-hydroxypyridine becomes **changed: tautomer** of 2-pyridone (removed 0, changed 3).
 
 Four outcomes per compound:
 
@@ -55,7 +58,7 @@ Four outcomes per compound:
 - **unchanged** — present in both, identical exact representation
 - **changed** — present in both *at this level*, but written differently; the `change` column names the difference
 
-"Changed" is the category a text diff cannot produce. It is where a release note gets "25 compounds had stereochemistry assigned, 12 moved to a different salt form" instead of "1,203 SMILES differ".
+"Changed" is the category a text diff cannot produce. It is where a release note gets "one compound moved to a different salt form" instead of "seven SMILES differ" — and, on a real release, "25 compounds had stereochemistry assigned" instead of "1,203 SMILES differ".
 
 ## The output file
 
@@ -82,7 +85,7 @@ Four outcomes per compound:
 
 **"Did they add stereo to existing compounds?"** — `--level nostereo`; compounds that were `removed` + `added` at `parent` become `changed: stereochemistry`.
 
-**"Is my generated set novel?"** — `diff training.smi generated.smi --level skeleton`; `added` rows are novel even ignoring stereo and tautomer form; `unchanged`/`changed` rows are memorised, possibly with a representational twist.
+**"Is my generated set novel?"** — `diff examples/train.smi examples/generated.smi --level skeleton`; `added` rows are novel even ignoring stereo and tautomer form; `unchanged`/`changed` rows are memorised, possibly with a representational twist.
 
 **"Did the vendor silently reformat everything?"** — `--level exact` shows large churn; `--level parent` shows almost none. That gap *is* the reformatting.
 

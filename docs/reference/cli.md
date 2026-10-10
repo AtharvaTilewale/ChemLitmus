@@ -13,6 +13,8 @@ Every command has `--help`. Conventions used throughout:
 
 ---
 
+Input files named `examples/...` in these docs are in the repository's [`examples/`](../getting-started/example-data.md) directory.
+
 ## Dataset workflows
 
 ### `audit`
@@ -39,11 +41,11 @@ Overlap between splits as non-additive evidence classes (exact, parent, tautomer
 ### `conflicts`
 
 ```
-chemlitmus conflicts DATASET --endpoint-column C [--units-column C] [--relation-column C] [--context LIST]
+chemlitmus conflicts DATASET --endpoint-column C [--units-column C] [--relation-column C] [--context LIST] [--source-column C]
     [--tolerance F] [--kind auto|classification|quantitative] [--config P] [--output PATH] [--json PATH]
 ```
 
-Contradictory labels or measurements among records of the same compound in the same endpoint context. Molar units converted with provenance; censored values kept as bounds.
+Contradictory labels or measurements among records of the same compound in the same endpoint context. Molar units converted with provenance; censored values kept as bounds; with `--source-column`, each conflict separates within-source (technical) from between-source spread. Without a units column the endpoint is compared as a dimensionless quantity.
 
 ### `cliffs`
 

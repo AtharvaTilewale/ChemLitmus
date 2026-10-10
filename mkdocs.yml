@@ -54,6 +54,7 @@ nav:
   - Getting started:
       - Installation: getting-started/installation.md
       - Quickstart: getting-started/quickstart.md
+      - Example data: getting-started/example-data.md
       - Configuration: getting-started/configuration.md
   - Guides:
       - Audit a dataset: guides/audit-a-dataset.md

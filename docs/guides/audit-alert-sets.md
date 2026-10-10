@@ -32,8 +32,10 @@ The ChEMBL alert table as redistributed by `rd_filters` works directly: `alert_c
 ## Run the audit
 
 ```bash
-chemlitmus smartsaudit alerts.csv --output audit.csv --json audit.json
+chemlitmus smartsaudit examples/alerts.csv --output audit.csv --json audit.json
 ```
+
+[`examples/alerts.csv`](https://github.com/AtharvaTilewale/ChemLitmus/blob/main/examples/alerts.csv) is an 18-pattern catalogue with planted defects — an unparseable SMARTS, an exact duplicate, an aromatic/Kekulé pair, a never-matching `[#118]`, a `c[H]` that is dead without explicit hydrogens, an over-broad `[#6]`, a recursive pattern and several patterns provably contained in others ([Example data](../getting-started/example-data.md)). Against the bundled reference set it reports 1 unparseable, 1 needing explicit H, 4 over-broad, 4 that never fire (1 with a never-matching atom), 1 exact duplicate, 2 library-equivalent, 9 strictly subsumed and, with `--checks all,proof`, 12 proven redundant.
 
 About a minute for a thousand patterns on a laptop. Two tables come back.
 
@@ -102,7 +104,7 @@ Output: the normalised SMARTS, whether it needs explicit H, whether it is recurs
 The bundled reference set is drug-like. If your library is agrochemicals, natural products or materials, use it as the reference instead:
 
 ```bash
-chemlitmus smartsaudit alerts.csv --library my_library.smi
+chemlitmus smartsaudit examples/alerts.csv --library examples/library.smi      # or your own library
 ```
 
 Every empirical verdict — breadth, dead, equivalence, subsumption, sensitivity — is then relative to *your* molecules, which is usually what you want.
@@ -131,7 +133,7 @@ element census) so a reader can judge whether the panel resembles their chemistr
 ### Never extrapolate a zero-hit result
 
 ```bash
-chemlitmus smartsaudit alerts.csv --holdout vendor_library.smi --holdout natural_products.smi
+chemlitmus smartsaudit examples/alerts.csv --holdout vendor_library.smi --holdout natural_products.smi
 ```
 
 Each holdout library is matched separately, and the report names the patterns that never fired on
@@ -141,7 +143,7 @@ chemistry.
 ## Propose a cleanup without losing provenance
 
 ```bash
-chemlitmus smartsaudit alerts.csv --checks all,proof --cleanup proposals.csv
+chemlitmus smartsaudit examples/alerts.csv --checks all,proof --cleanup proposals.csv
 ```
 
 Each proposal names the pattern, what covers it, the evidence class, and one of three actions:
@@ -156,8 +158,8 @@ automatically; `--allow-cross-set-cleanup` opts into the provenance-losing case 
 `smartsaudit`'s `subsumed_by` is empirical. Add the static prover to the audit, or run it alone:
 
 ```bash
-chemlitmus smartsaudit alerts.csv --checks all,proof -o audit.csv   # adds proven_subsumed_by / proof_status
-chemlitmus smartsproof alerts.csv -o proofs.csv                      # proofs only, no library needed
+chemlitmus smartsaudit examples/alerts.csv --checks all,proof -o audit.csv   # adds proven_subsumed_by / proof_status
+chemlitmus smartsproof examples/alerts.csv -o proofs.csv                      # proofs only, no library needed
 chemlitmus smartsproof --subsumes '[Cl][CX4]' '[#6][Cl]'             # one pair, with the witness
 chemlitmus smartsproof --satisfiable '[R0;x2]'                       # can this ever match?
 ```
@@ -173,8 +175,13 @@ A catalogue changes — a new release, a vendor's re-implementation, your own cl
 audit. `smartsdiff` tells you what changed in *behaviour*, not just in text:
 
 ```bash
-chemlitmus smartsdiff alerts_v1.csv alerts_v2.csv -o diff.csv
+chemlitmus smartsdiff examples/alerts.csv examples/alerts_v2.csv -o diff.csv
 chemlitmus smartsdiff pains_table.csv rdkit:PAINS          # a file against RDKit's built-in catalogue
+```
+
+[`examples/alerts_v2.csv`](https://github.com/AtharvaTilewale/ChemLitmus/blob/main/examples/alerts_v2.csv) is a clean-up of `alerts.csv`: six patterns are gone (the over-broad `[#6]` and `c1ccccc1`, the duplicate, the Kekulé twin, the broken pattern and the never-matching `[#118]`), `aldehyde` and `michael_acceptor` were broadened, `phenol` and `thiol` were rewritten (`thiol` now requires a carbon neighbour, which changes nothing on this panel), and `epoxide` is new. The diff pairs 12 patterns by name and reports 4 texts rewritten, 10 with identical hits, 6 removed, 2 broadened and 1 added — and that 2,494 of the 9,272 reference molecules (26.9%) change verdict, all of them no longer flagged.
+
+```bash
 ```
 
 Patterns are paired by name, then by identical SMARTS, then by identical hit set on the
@@ -218,8 +225,8 @@ alone (`Text: no SMARTS`). Available: `rdkit:PAINS`, `rdkit:PAINS_A/B/C`, `rdkit
 ## Then: screen with the preparation declared
 
 ```bash
-chemlitmus filter --file library.csv --rules pains --prep explicit-h --output screened.csv
-chemlitmus substructure 'c[H]' --file library.smi --prep explicit-h
+chemlitmus filter --file examples/library.csv --rules pains --prep explicit-h --output screened.csv
+chemlitmus substructure 'c[H]' --file examples/library.smi --prep explicit-h
 ```
 
 The `preparation` column in the output is the record that makes the screen reproducible.
