@@ -7,7 +7,8 @@ context — target / assay / source when those columns exist) are compared:
 * **quantitative** measurements: exact (``=``) values are converted to a common unit with the
   conversion recorded; censored values (``<``, ``>``, ``<=``, ``>=``, ``~``, ranges) are kept as
   bounds and never averaged; a conflict is a spread of exact values above the tolerance (in log10
-  units for molar quantities, absolute otherwise).
+  units for molar quantities, absolute otherwise). Without a units column the endpoint is treated
+  as dimensionless (pIC50, logP, a score) and compared on its own scale.
 
 Nothing is resolved automatically: the default action is review.
 """
@@ -100,7 +101,15 @@ class LabelConflictReport(BaseModel):
     note: str = "Censored values are bounds, not observations, and are never averaged. Groups are compared only within identical endpoint context."
 
 
-def parse_measurement(raw: Any, units: Optional[str], relation: Optional[str] = None) -> Measurement:
+def parse_measurement(raw: Any, units: Optional[str], relation: Optional[str] = None, unitless: bool = False) -> Measurement:
+    """Parse one measurement.
+
+    Args:
+        units: the record's unit string; ``None``/empty means no unit was supplied.
+        unitless: ``True`` when the dataset has no units column at all — the endpoint is then a
+            dimensionless quantity (pIC50, logP, a score) compared on its own scale. With a units
+            column present, a value lacking units is not comparable (``UNITS_MISSING``).
+    """
     s = "" if raw is None else str(raw).strip()
     m = Measurement(record_id="", raw_value=s, units=(units or "").strip() or None)
     rel_col = (relation or "").strip()
@@ -116,7 +125,8 @@ def parse_measurement(raw: Any, units: Optional[str], relation: Optional[str] = 
     m.relation = rel
     m.censored = rel != "="
     if m.units is None:
-        m.comparable = False
+        if not unitless:
+            m.comparable = False
         return m
     u = m.units.lower()
     if u in MOLAR_TO_NM:
@@ -206,7 +216,7 @@ def label_conflicts(
         else:
             ms: List[Measurement] = []
             for r in members:
-                m = parse_measurement(r[endpoint_field], r.get(units_field) if units_field else None, r.get(relation_field) if relation_field else None)
+                m = parse_measurement(r[endpoint_field], r.get(units_field) if units_field else None, r.get(relation_field) if relation_field else None, unitless=units_field is None)
                 m.record_id, m.source_id, m.context = r["record_id"], r.get("source_id"), context
                 ms.append(m)
                 if m.value is None:
@@ -222,6 +232,8 @@ def label_conflicts(
                 units = {m.units.lower() for m in exact if m.units}
                 if len(units) == 1:
                     scale, pts = f"absolute ({units.pop()})", [m.value for m in exact]
+                elif not units and exact:
+                    scale, pts = "absolute (unitless)", [m.value for m in exact]
                 else:
                     scale, pts = None, []
                     for m in exact:

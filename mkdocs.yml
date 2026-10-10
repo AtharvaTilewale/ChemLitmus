@@ -56,6 +56,8 @@ nav:
       - Quickstart: getting-started/quickstart.md
       - Configuration: getting-started/configuration.md
   - Guides:
+      - Audit a dataset: guides/audit-a-dataset.md
+      - Splits and generated molecules: guides/splits-and-generation.md
       - Clean a compound library: guides/clean-a-library.md
       - Audit a structural-alert set: guides/audit-alert-sets.md
       - Compare two collections: guides/compare-libraries.md
@@ -67,6 +69,7 @@ nav:
   - Concepts:
       - Records, policy and provenance: concepts/records-and-policy.md
       - Molecular identity: concepts/molecular-identity.md
+      - Activity cliffs and label outliers: concepts/activity-cliffs.md
       - Molecule preparation: concepts/molecule-preparation.md
       - SMARTS auditing: concepts/smarts-auditing.md
       - SMARTS containment proofs: concepts/smarts-proofs.md

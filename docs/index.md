@@ -64,6 +64,7 @@ Everything runs offline on RDKit except the explicitly network-backed database c
 | Audit a dataset end to end | [`audit`](reference/cli.md#audit) | yes |
 | Detect train/test leakage | [`leakage`](reference/cli.md#leakage) | yes |
 | Find contradictory labels | [`conflicts`](reference/cli.md#conflicts) | yes |
+| Find activity cliffs and suspect labels | [`cliffs`](reference/cli.md#cliffs) | yes |
 | Build group-aware splits | [`split`](reference/cli.md#split) | yes |
 | Evaluate generated molecules | [`generated`](reference/cli.md#generated) | yes |
 | Audit a SMARTS / structural-alert set | [`smartsaudit`](reference/cli.md#smartsaudit) | yes |

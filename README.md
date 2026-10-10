@@ -30,7 +30,7 @@ Offline on RDKit, except the explicitly network-backed database commands. Every 
 
 | | Commands |
 |---|---|
-| **Audit a dataset** — one offline pass: parsing, standardisation provenance, identity groups, structural flags, descriptors, alerts, train/test leakage, label conflicts; every record accounted for, stable issue codes with evidence and actions, HTML + JSON + CSV outputs, CI gates | `audit` `leakage` `conflicts` |
+| **Audit a dataset** — one offline pass: parsing, standardisation provenance, identity groups, structural flags, descriptors, alerts, train/test leakage, label conflicts; every record accounted for, stable issue codes with evidence and actions, HTML + JSON + CSV outputs, CI gates; activity cliffs between matched molecular pairs with censored values kept as bounds, and label outliers whose every neighbour disagrees with them | `audit` `leakage` `conflicts` `cliffs` |
 | **ML data workflows** — group-aware splits that never divide an identity or scaffold group; generated-molecule evaluation with explicit denominators for validity, uniqueness and novelty | `split` `generated` |
 | **Validate and diagnose** — located, explainable SMILES failures with mechanical repairs; catches records RDKit silently truncates at whitespace | `validate` `diagnose` |
 | **Standardise and identify** — salt stripping, neutralisation, tautomer canonicalisation; six nested identity levels (exact → parent → tautomer/nostereo → skeleton → formula) built on RDKit `RegistrationHash` | `standardize` `identity` `tautomers` `stereo` `iupacname` |

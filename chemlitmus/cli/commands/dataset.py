@@ -275,6 +275,113 @@ def conflicts_cmd(
     raise typer.Exit(code=0)
 
 
+@app.command(name="cliffs")
+def cliffs_cmd(
+    dataset: Path = typer.Argument(..., help="Dataset with an endpoint column."),
+    endpoint_column: str = typer.Option(..., "--endpoint-column", "-e"),
+    units_column: Optional[str] = typer.Option(None, "--units-column"),
+    relation_column: Optional[str] = typer.Option(None, "--relation-column"),
+    context_columns: Optional[str] = typer.Option(None, "--context", help="Comma-separated columns (target, assay) that must match for two compounds to be compared."),
+    structure_column: Optional[str] = typer.Option(None, "--structure-column"),
+    id_column: Optional[str] = typer.Option(None, "--id-column"),
+    threshold: float = typer.Option(1.0, "--threshold", help="Label difference that counts as a cliff: log10 units for molar quantities (1.0 = ten-fold), absolute otherwise."),
+    kind: str = typer.Option("auto", "--kind", help="auto | classification | quantitative"),
+    mmp: bool = typer.Option(True, "--mmp/--no-mmp", help="Pair compounds that differ at one site (matched molecular pairs)."),
+    similarity: bool = typer.Option(True, "--similarity/--no-similarity", help="Pair compounds whose fingerprint Tanimoto is at or above --similarity-threshold."),
+    similarity_threshold: float = typer.Option(0.9, "--similarity-threshold", help="Tanimoto (policy fingerprint) for similarity pairing."),
+    max_r_atoms: int = typer.Option(13, "--max-r-atoms", help="Largest varied fragment (heavy atoms) accepted for a matched pair."),
+    min_neighbours: int = typer.Option(2, "--min-neighbours", help="Neighbours that must all disagree (and agree with each other) before a compound is a label outlier."),
+    all_pairs: bool = typer.Option(False, "--all-pairs", help="Keep consistent pairs in the outputs too (default: cliffs and undetermined only)."),
+    config: Optional[str] = typer.Option(None, "--config", "-c"),
+    json_out: Optional[Path] = typer.Option(None, "--json"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="CSV of pairs."),
+    outliers_out: Optional[Path] = typer.Option(None, "--outliers", help="CSV of label outliers."),
+) -> None:
+    """Find activity cliffs and suspect labels: near-identical compounds whose labels disagree."""
+    import csv
+    import json
+
+    from chemlitmus.core.cliffs import activity_cliffs
+    from chemlitmus.core.policy import resolve_policy
+    from chemlitmus.core.records import read_records
+
+    if kind not in ("auto", "classification", "quantitative"):
+        console.print("[red]Error:[/red] --kind must be auto, classification or quantitative."); raise typer.Exit(code=1)
+    if not (mmp or similarity):
+        console.print("[red]Error:[/red] enable at least one of --mmp / --similarity."); raise typer.Exit(code=1)
+    if not 0.0 < similarity_threshold <= 1.0:
+        console.print("[red]Error:[/red] --similarity-threshold must be in (0, 1]."); raise typer.Exit(code=1)
+    if threshold <= 0:
+        console.print("[red]Error:[/red] --threshold must be positive."); raise typer.Exit(code=1)
+    policy = resolve_policy(config)
+    ctx = [c.strip() for c in (context_columns or "").split(",") if c.strip()]
+    try:
+        roles = {"endpoint": endpoint_column, **({"units": units_column} if units_column else {}), **({"relation": relation_column} if relation_column else {})}
+        rs = read_records(dataset, structure_column=structure_column, id_column=id_column, roles=roles)
+        for c in ctx:
+            if c not in rs.columns:
+                raise SchemaError(f"Context column {c!r} not found. Columns: {rs.columns}")
+    except (SchemaError, FileNotFoundError, ValueError) as exc:
+        console.print(f"[red]Error:[/red] {escape(str(exc))}"); raise typer.Exit(code=1)
+    recs = []
+    for r in rs.ok_records():
+        d = dict(r.fields); d.update({"record_id": r.record_id, "source_id": r.source_id, "smiles": r.parsed_smiles})
+        recs.append(d)
+    rep = activity_cliffs(recs, policy, endpoint_field=endpoint_column, units_field=units_column, relation_field=relation_column, context_fields=ctx,
+                          threshold=threshold, kind=kind, use_mmp=mmp, use_similarity=similarity, similarity_threshold=similarity_threshold,
+                          max_r_atoms=max_r_atoms, min_outlier_neighbours=min_neighbours, keep_pairs="all" if all_pairs else "cliffs")
+    rels = ", ".join(f"{k} {v}" for k, v in sorted(rep.n_pairs_by_relationship.items())) or "none"
+    console.print(f"[bold]Activity cliffs[/bold] · endpoint [cyan]{escape(endpoint_column)}[/cyan] ({rep.kind}{', ' + rep.scale if rep.scale else ''}) · identity level {rep.identity_level} · context {escape(', '.join(ctx) or 'none')} · threshold {threshold}")
+    console.print(f"  {rep.n_records} records -> {rep.n_compounds} compounds · {rep.n_internal_conflict_excluded} excluded as internally conflicting · unparseable {rep.n_unparseable} · no value {rep.n_no_value} · {rs.n_total - rs.n_ok} records not parsed")
+    console.print(f"  {rep.n_pairs} pairs ({rels}) · [bold]{rep.n_cliffs} cliffs[/bold] · {rep.n_consistent} consistent · {rep.n_undetermined} undetermined"
+                  + (f" · cliff fraction {rep.cliff_fraction:.1%} of decided pairs" if rep.cliff_fraction is not None else "")
+                  + f" · {rep.n_compounds_in_cliffs} compounds in cliffs · [bold]{rep.n_outliers} label outliers[/bold]")
+    shown = [p for p in rep.pairs if p.verdict == "cliff"][:30]
+    if shown:
+        t = Table(show_header=True, header_style="bold yellow", title="Cliffs (first 30)")
+        t.add_column("A"); t.add_column("B"); t.add_column("Relationship"); t.add_column("Change", overflow="fold"); t.add_column("Value A"); t.add_column("Value B"); t.add_column("Min diff", justify="right")
+        for p in shown:
+            t.add_row(",".join(p.source_ids_a or p.record_ids_a), ",".join(p.source_ids_b or p.record_ids_b), p.relationship + (f" ({p.similarity})" if p.similarity is not None else ""),
+                      escape(p.transformation or ""), escape(p.value_a), escape(p.value_b), "" if p.min_difference is None else f"{p.min_difference:.2f}")
+        console.print(t)
+    if rep.outliers:
+        t = Table(show_header=True, header_style="bold red", title="Label outliers")
+        t.add_column("Record(s)"); t.add_column("Value"); t.add_column("Neighbours", justify="right"); t.add_column("Neighbour values", overflow="fold")
+        for o in rep.outliers[:30]:
+            t.add_row(",".join(o.source_ids or o.record_ids), escape(o.value), str(o.n_neighbours), escape("; ".join(o.neighbour_values)))
+        console.print(t)
+    if rep.transformations:
+        t = Table(show_header=True, header_style="bold cyan", title="Transformations with most cliffs")
+        t.add_column("Transformation", overflow="fold"); t.add_column("Pairs", justify="right"); t.add_column("Cliffs", justify="right"); t.add_column("Consistent", justify="right"); t.add_column("Mean signed diff", justify="right")
+        for tr in rep.transformations[:10]:
+            t.add_row(escape(tr.transformation), str(tr.n_pairs), str(tr.n_cliffs), str(tr.n_consistent), "" if tr.mean_signed_difference is None else f"{tr.mean_signed_difference:+.2f}")
+        console.print(t)
+    console.print(f"  [dim]{escape(rep.note)}[/dim]")
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with open(output, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["pair_id", "context", "record_ids_a", "record_ids_b", "source_ids_a", "source_ids_b", "smiles_a", "smiles_b", "relationship", "similarity", "core", "transformation", "n_changed_atoms", "value_a", "value_b", "min_difference", "max_difference", "signed_difference", "verdict"])
+            for p in rep.pairs:
+                w.writerow([p.pair_id, json.dumps(p.context), ";".join(p.record_ids_a), ";".join(p.record_ids_b), ";".join(p.source_ids_a), ";".join(p.source_ids_b), p.smiles_a, p.smiles_b, p.relationship,
+                            "" if p.similarity is None else p.similarity, p.core or "", p.transformation or "", "" if p.n_changed_atoms is None else p.n_changed_atoms,
+                            p.value_a, p.value_b, "" if p.min_difference is None else p.min_difference, "" if p.max_difference is None else p.max_difference,
+                            "" if p.signed_difference is None else p.signed_difference, p.verdict])
+        console.print(f"[green]Saved:[/green] {output}")
+    if outliers_out:
+        outliers_out.parent.mkdir(parents=True, exist_ok=True)
+        with open(outliers_out, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["compound_id", "record_ids", "source_ids", "smiles", "value", "context", "n_neighbours", "neighbour_record_ids", "neighbour_values", "neighbour_relationships"])
+            for o in rep.outliers:
+                w.writerow([o.compound_id, ";".join(o.record_ids), ";".join(o.source_ids), o.smiles, o.value, json.dumps(o.context), o.n_neighbours, ";".join(o.neighbour_ids), ";".join(o.neighbour_values), ";".join(o.neighbour_relationships)])
+        console.print(f"[green]Saved:[/green] {outliers_out}")
+    if json_out:
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        json_out.write_text(json.dumps(rep.model_dump(), indent=2)); console.print(f"[green]Saved:[/green] {json_out}")
+    raise typer.Exit(code=0)
+
+
 @app.command(name="split")
 def split_cmd(
     dataset: Path = typer.Argument(..., help="Dataset to split."),

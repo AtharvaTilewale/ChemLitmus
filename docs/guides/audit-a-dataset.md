@@ -138,13 +138,39 @@ chemlitmus conflicts data.csv -e standard_value --units-column standard_units \
 Records of the same compound *in the same endpoint context* are compared. Molar units are
 converted with the conversion recorded (`10 uM -> 10000 nM -> p = 5.0`); the spread is measured in
 log10 units (tolerance 1.0 = ten-fold). Censored values (`<`, `>`, ranges) are kept as **bounds**
-and never averaged; measurements with no units are flagged and excluded from comparison. Nothing
-is resolved automatically — the suggested action is review, not "keep the most potent".
+and never averaged. With a units column, a measurement lacking units is flagged and excluded; with no
+units column at all the endpoint is treated as dimensionless (pIC50, logP, a score) and compared on
+its own scale. Nothing is resolved automatically — the suggested action is review, not "keep the most potent".
 
 With a `--source-column`, each conflict group also reports **where its disagreement lives**:
 `technical_spread` is the largest spread within one source (repeated entries from one experiment),
 `between_source_spread` the spread of per-source medians (independent measurements that disagree).
 Without source metadata the split is reported as `not determinable` rather than guessed.
+
+## Activity cliffs and suspect labels
+
+```bash
+chemlitmus cliffs data.csv -e standard_value --units-column standard_units \
+    --relation-column standard_relation --context assay_chembl_id \
+    -o pairs.csv --outliers outliers.csv --json cliffs.json
+```
+
+Where `conflicts` compares records of the same compound, `cliffs` compares *different* compounds
+that are nearly the same — matched molecular pairs (one site changed, including H → substituent)
+and fingerprint neighbours at Tanimoto ≥ 0.9 — and reports every pair whose labels are **proven**
+to differ by at least the threshold (default 1.0 log unit = ten-fold). Censored values are bounds
+here too: a pair that cannot be decided is `undetermined`, never a cliff, and the cliff fraction is
+quoted over decided pairs only.
+
+Compounds whose every neighbour disagrees with them while the neighbours agree with each other are
+listed as **label outliers** (`LABEL_OUTLIER`, warning). On 6,000 ChEMBL IC50 records for
+acetylcholinesterase this surfaces, among others, a compound reported at pIC50 11.2 whose three
+one-atom neighbours sit at 7.8–8.7 — the signature of a unit error. The command does not decide:
+a genuine cliff produces the same pattern, and the suggested action is to check the source record.
+
+The `transformations` table groups matched pairs by the fragment exchange (`C[*:1]>>[H][*:1]`,
+…) with pair counts by verdict and the mean signed difference, which separates systematic SAR from
+isolated disagreements. See [Activity cliffs and label outliers](../concepts/activity-cliffs.md).
 
 ## Then: splits and generated molecules
 

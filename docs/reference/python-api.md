@@ -59,6 +59,10 @@ The single strict parser every structure-consuming function uses. Internal white
 
 Conflicts within identity groups and endpoint context. `Measurement` records `relation, value, upper, units, value_nm, log_value, conversion, censored, comparable`. Censored values are never averaged.
 
+### `activity_cliffs(records, policy=None, endpoint_field='endpoint', units_field=None, relation_field=None, context_fields=(), threshold=1.0, kind='auto', use_mmp=True, use_similarity=True, similarity_threshold=0.9, max_r_atoms=13, min_outlier_neighbours=2, keep_pairs='all') -> CliffReport`
+
+`records` are dicts with `record_id`, `smiles`, optional `source_id` and the raw fields; identity keys are computed at the policy level and same-compound records merged first. `CliffReport`: counts (`n_records, n_no_value, n_compounds, n_internal_conflict_excluded, n_pairs, n_pairs_by_relationship, n_cliffs, n_consistent, n_undetermined, cliff_fraction, n_compounds_in_cliffs, n_outliers`), `scale`, `pairs` (`CliffPair`: `relationship, similarity, core, transformation, n_changed_atoms, value_a, value_b, min_difference, max_difference, signed_difference, verdict`), `transformations` (`TransformationSummary`), `outliers` (`LabelOutlier` with `n_neighbours, n_agreeing`), `record_issues`. `mmp_fragments(mol, max_r_atoms=13, include_hydrogen=True)` exposes the single-cut fragmentation. Censored values are bounds: `verdict` is `cliff` only when the proven minimum difference reaches the threshold.
+
 ### `GatePolicy` · `evaluate_gates(audit, gates) -> GateResult` · `write_audit_outputs(audit, out_dir, ...)` · `render_html(audit, gate=None)` · `CleanPolicy`
 
 Gates return `exit_code` 0 / 3 (violation) / 4 (partial processing). `write_audit_outputs` writes every artefact and the manifest.

@@ -60,6 +60,8 @@ ISSUE_CATALOGUE: Dict[str, Tuple[str, str, str]] = {
     "DUP_SKELETON": ("info", "Same 2D skeleton as an earlier record (differs in stereo and/or tautomer).", "Review."),
     "ALERT_MATCH": ("info", "Matches a structural alert.", "Context, not a verdict: alerts flag assay-interference motifs, not toxicity or activity."),
     "LABEL_CONFLICT": ("warning", "Records of the same compound carry contradictory labels or measurements.", "Review; do not resolve by keeping the strongest value."),
+    "ACTIVITY_CLIFF": ("info", "A near-identical compound (matched molecular pair or high-similarity neighbour) carries a proven label difference at or above the threshold.", "SAR when both values are sound, an error when one is not; the pair is evidence for review, not a verdict."),
+    "LABEL_OUTLIER": ("warning", "Every near neighbour disagrees with this compound's value while agreeing with each other.", "Check the source record: this is the pattern a wrong value produces most often, but genuine cliffs produce it too."),
     "UNITS_MISSING": ("warning", "A quantitative measurement has no units.", "Supply units; the value cannot be compared."),
     "RELATION_CENSORED": ("info", "Measurement is censored (<, >, range).", "Treat as a bound, not a value."),
     "SPLIT_OVERLAP": ("error", "A compound appears in more than one split (at the policy identity level).", "Move or drop one occurrence; re-run the leakage report."),

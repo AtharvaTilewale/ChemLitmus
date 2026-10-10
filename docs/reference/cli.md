@@ -45,6 +45,17 @@ chemlitmus conflicts DATASET --endpoint-column C [--units-column C] [--relation-
 
 Contradictory labels or measurements among records of the same compound in the same endpoint context. Molar units converted with provenance; censored values kept as bounds.
 
+### `cliffs`
+
+```
+chemlitmus cliffs DATASET --endpoint-column C [--units-column C] [--relation-column C] [--context LIST]
+    [--threshold F] [--kind auto|classification|quantitative] [--mmp/--no-mmp] [--similarity/--no-similarity]
+    [--similarity-threshold F] [--max-r-atoms N] [--min-neighbours N] [--all-pairs] [--config P]
+    [--output PATH] [--outliers PATH] [--json PATH]
+```
+
+Activity cliffs and label outliers among near-identical *different* compounds: matched molecular pairs (single cut, H included; varied fragment ≤ `--max-r-atoms` and never larger than the core) and fingerprint neighbours at Tanimoto ≥ `--similarity-threshold` (0.9). A pair is a `cliff` only when the measurements *prove* a difference ≥ `--threshold` (1.0 log unit for molar data); censored values make it `undetermined`, never a cliff. A compound is a label outlier when every neighbour is a cliff against it, no two neighbours are cliffs against each other, and ≥ `--min-neighbours` of them agree. Outputs: pair CSV (cliffs and undetermined by default; `--all-pairs` adds consistent), outlier CSV, JSON with per-transformation summaries. Issue codes `ACTIVITY_CLIFF` (info), `LABEL_OUTLIER` (warning).
+
 ### `split`
 
 ```
